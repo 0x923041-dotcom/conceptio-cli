@@ -1,8 +1,9 @@
 """Local configuration for the Conceptio CLI.
 
 Stored at ``~/.conceptio/config.json``. Holds the API base, the optional Pro
-license key, and user preferences. Never touches any internal Lucida/Insula
-infrastructure — this tool is fully self-contained and public-facing.
+license key, and user preferences. This tool is fully self-contained and
+public-facing — it talks only to the public ``https://www.conceptio.app``
+endpoint and stores its own local config.
 """
 
 import json

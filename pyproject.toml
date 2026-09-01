@@ -9,7 +9,7 @@ description = "Fast CLI & Model Context Protocol (MCP) search tool for 580,000+ 
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.8"
-authors = [{ name = "Lucida Team" }]
+authors = [{ name = "Conceptio" }]
 keywords = ["search", "academic", "papers", "mcp", "ai-agents", "arxiv", "nist", "research"]
 classifiers = [
     "Environment :: Console",
