@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conceptio-search"
+version = "0.2.0"
+description = "Fast CLI & Model Context Protocol (MCP) search tool for 580,000+ open-access papers, technical standards, and books."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+authors = [{ name = "Lucida Team" }]
+keywords = ["search", "academic", "papers", "mcp", "ai-agents", "arxiv", "nist", "research"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+    "httpx>=0.24.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://conceptio.app"
+Repository = "https://github.com/0x923041-dotcom/conceptio-cli"
+
+[project.scripts]
+conceptio = "conceptio_cli.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["conceptio_cli*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
