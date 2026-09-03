@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from . import __version__
-from .config import DEFAULT_API_BASE, load_config
+from .config import AUTH_REQUIRED_HINT, DEFAULT_API_BASE, load_config
 
 USER_AGENT = f"conceptio-cli/{__version__}"
 UPGRADE_HINT = (
@@ -94,6 +94,10 @@ class ConceptioClient:
                     resp = client.get(url, params=params, headers=self._headers())
                 if resp.status_code == 429:
                     return {"error": UPGRADE_HINT, "results": []}
+                if resp.status_code == 401:
+                    # Server-side key gate (old/keyless clients break loudly
+                    # here instead of silently burning the public tier).
+                    raise ConceptioError(AUTH_REQUIRED_HINT)
                 resp.raise_for_status()
                 data = resp.json()
                 if not isinstance(data, dict):

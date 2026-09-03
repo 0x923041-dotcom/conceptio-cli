@@ -278,3 +278,24 @@ def test_download_by_target_resolves_then_downloads(tmp_path, monkeypatch):
     client.download_by_target("9", str(out))
     assert calls == ["/y.pdf"]
     assert out.read_bytes() == b"%PDF"
+
+
+# ── server-side key gate (401 → auth hint, 2026-09-03) ───────────────────────
+def test_401_maps_to_auth_hint_loudly():
+    from conceptio_cli.config import AUTH_REQUIRED_HINT
+
+    def handler(request):
+        assert request.headers.get("user-agent", "").startswith("conceptio-cli/")
+        return httpx.Response(401, json={"detail": "key required"}, request=request)
+
+    client = _make_client(handler)
+    with pytest.raises(ConceptioError) as ei:
+        client.search("moby dick")
+    assert "conceptio auth" in str(ei.value)
+    assert str(ei.value) == AUTH_REQUIRED_HINT
+
+
+def test_429_still_returns_error_dict():
+    client = _make_client(_json_handler({"detail": "slow down"}, status=429))
+    data = client.search("moby dick")
+    assert "error" in data and data["results"] == []
