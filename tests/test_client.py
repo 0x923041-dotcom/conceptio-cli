@@ -280,7 +280,7 @@ def test_download_by_target_resolves_then_downloads(tmp_path, monkeypatch):
     assert out.read_bytes() == b"%PDF"
 
 
-# ── server-side key gate (401 → auth hint, 2026-09-03) ───────────────────────
+# ── auth/trial status handling (401 → auth hint, 403 → upgrade, 2026-09-03) ──
 def test_401_maps_to_auth_hint_loudly():
     from conceptio_cli.config import AUTH_REQUIRED_HINT
 
@@ -295,7 +295,41 @@ def test_401_maps_to_auth_hint_loudly():
     assert str(ei.value) == AUTH_REQUIRED_HINT
 
 
+def test_403_trial_exhausted_surfaces_server_detail():
+    def handler(request):
+        return httpx.Response(
+            403, json={"detail": "Free trial exhausted (50 lifetime searches) — upgrade to Pro for unlimited access."},
+            request=request,
+        )
+
+    client = _make_client(handler)
+    with pytest.raises(ConceptioError) as ei:
+        client.search("moby dick")
+    assert "exhausted" in str(ei.value)
+    assert "upgrade to Pro" in str(ei.value)
+
+
 def test_429_still_returns_error_dict():
     client = _make_client(_json_handler({"detail": "slow down"}, status=429))
     data = client.search("moby dick")
     assert "error" in data and data["results"] == []
+
+
+def test_free_key_quota_reports_trial_remaining():
+    """/api/me for a free-tier key carries the account's shared allowance; the
+    client passes it through so `conceptio quota` can display it."""
+    client = _make_client(_json_handler({
+        "tier": "public", "email": "", "auth": "api_key", "trial_remaining": 33,
+    }), api_key="ckey_live_1234567890abcdef")
+    data = client.quota()
+    assert data["auth"] == "api_key"
+    assert data["tier"] == "public"
+    assert data["trial_remaining"] == 33
+
+
+def test_free_key_search_response_carries_remaining():
+    client = _make_client(_json_handler({
+        "query": "moby dick", "total": 1, "results": [], "tier": "public", "trial_remaining": 31,
+    }))
+    data = client.search("moby dick")
+    assert data["trial_remaining"] == 31

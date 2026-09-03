@@ -25,6 +25,16 @@ _DIRECTIVE_RE = re.compile(
 )
 
 
+def _server_detail(resp: httpx.Response) -> str:
+    """Pull the API's own ``detail`` message from an error response, if any."""
+    try:
+        body = resp.json()
+        detail = body.get("detail")
+        return str(detail).strip() if detail else ""
+    except Exception:
+        return ""
+
+
 class ConceptioError(Exception):
     """Friendly error surfaced to CLI/MCP users."""
 
@@ -95,9 +105,13 @@ class ConceptioClient:
                 if resp.status_code == 429:
                     return {"error": UPGRADE_HINT, "results": []}
                 if resp.status_code == 401:
-                    # Server-side key gate (old/keyless clients break loudly
-                    # here instead of silently burning the public tier).
+                    # 401: no stored credential, or the one saved was rejected.
+                    # The fix is to store a valid key and retry.
                     raise ConceptioError(AUTH_REQUIRED_HINT)
+                if resp.status_code == 403:
+                    # 403 on the free plan: the account's 50-search allowance
+                    # is spent (the web app and your agents share one balance).
+                    raise ConceptioError(_server_detail(resp) or UPGRADE_HINT)
                 resp.raise_for_status()
                 data = resp.json()
                 if not isinstance(data, dict):
@@ -200,6 +214,8 @@ class ConceptioClient:
                 with client.stream("GET", url, headers=self._headers()) as stream_resp:
                     if stream_resp.status_code == 429:
                         raise ConceptioError(UPGRADE_HINT)
+                    if stream_resp.status_code == 403:
+                        raise ConceptioError(_server_detail(stream_resp) or UPGRADE_HINT)
                     stream_resp.raise_for_status()
                     with open(output_path, "wb") as f:
                         for chunk in stream_resp.iter_bytes(chunk_size=8192):

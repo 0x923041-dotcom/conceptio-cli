@@ -76,13 +76,22 @@ def handle_quota(client: ConceptioClient) -> int:
     elif shown:
         console.print(f"[yellow]Auth:[/] saved credential not recognized by the API — double-check it.")
     console.print(f"[bold]Tier:[/] [cyan]{tier}[/]")
+    trial_remaining = data.get("trial_remaining")
     if tier == "public":
-        console.print("  [dim]Free tier (browser trial) — the CLI itself needs an API key: "
-                      "run `conceptio auth <key>`.[/]")
+        if isinstance(trial_remaining, int):
+            if trial_remaining > 0:
+                console.print(f"  [cyan]Free plan: {trial_remaining} of 50 searches left[/] — "
+                              "your browser and agents share this allowance.")
+            else:
+                console.print("  [yellow]Free plan: 50-search allowance used up — "
+                              "upgrade to Pro for unlimited access.[/]")
+        else:
+            console.print("  [dim]Free plan — sign in on conceptio.app to mint an API key "
+                          "for your agents (all searches share one allowance).[/]")
     elif tier == "pro":
-        console.print("  [green]Pro — higher rate limit. Thank you for supporting the archive![/]")
+        console.print("  [green]Pro — unlimited searches. Thank you for supporting the archive![/]")
     elif tier == "institutional":
-        console.print("  [green]Institutional — higher rate limit via your institution.[/]")
+        console.print("  [green]Institutional — unlimited searches via your institution.[/]")
     return 0
 
 
@@ -125,6 +134,10 @@ def handle_auth(key: str) -> int:
         auth_path = data.get("auth") or "public"
         if tier != "public" or auth_path in ("api_key", "license"):
             console.print(f"[bold green][OK][/] Key accepted - tier: [cyan]{tier}[/]")
+            tr = data.get("trial_remaining")
+            if tier == "public" and isinstance(tr, int):
+                console.print(f"[dim]Free plan: {tr} of 50 searches remaining — agents share the "
+                              "account allowance with the web app.[/]")
         else:
             console.print("[yellow]Key saved but the API still reports the free tier — "
                           "double-check the key (run `conceptio quota` to re-check).[/]")

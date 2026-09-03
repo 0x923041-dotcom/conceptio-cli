@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "conceptio-search"
-version = "0.2.2"
+version = "0.2.3"
 description = "Fast CLI & Model Context Protocol (MCP) search tool for open-access papers, technical standards, and books."
 readme = "README.md"
 license = { text = "MIT" }
