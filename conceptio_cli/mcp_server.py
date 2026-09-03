@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from . import __version__
 from .client import ConceptioClient, ConceptioError
+from .config import AUTH_REQUIRED_HINT, load_config
 
 SERVER_NAME = "conceptio-mcp"
 PROTOCOL_VERSION = "2024-11-05"
@@ -26,8 +27,9 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "conceptio_search",
         "description": (
-            "Search 450,000+ open-access papers, technical standards (NIST, OWASP, CISA), "
-            "textbooks, and legal databases (EUR-Lex, HUDOC) without paywalls. Query supports "
+            "Search the open-access archive — papers, technical standards (NIST, OWASP, CISA), "
+            "textbooks, and legal sources (EUR-Lex, HUDOC) with license-aware access. "
+            "Requires an API key: run `conceptio auth` once first. Query supports "
             "directives like 'source:nist zero trust'."
         ),
         "inputSchema": {
@@ -126,6 +128,11 @@ def _text(content: str) -> List[Dict[str, str]]:
 
 def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a tool call. Returns {content, isError?}."""
+    # Defense in depth: the `mcp` entry point already refuses keyless
+    # startup, but the config file can change under a running server.
+    cfg = load_config()
+    if not (str(cfg.get("api_key") or "").strip() or str(cfg.get("license_key") or "").strip()):
+        return {"content": _text(AUTH_REQUIRED_HINT), "isError": True}
     if name == "conceptio_search":
         data = client.search(
             args.get("query", ""),

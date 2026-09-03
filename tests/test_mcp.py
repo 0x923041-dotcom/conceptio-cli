@@ -33,6 +33,9 @@ class FakeMCPClient:
 @pytest.fixture
 def fake_client(monkeypatch):
     monkeypatch.setattr(mcp_mod, "ConceptioClient", FakeMCPClient)
+    # Deterministic credentials regardless of the real ~/.conceptio file.
+    monkeypatch.setattr(mcp_mod, "load_config",
+                        lambda: {"api_key": "ckey_live_testkey0123456789abcdef"})
 
 
 def _run(payload_lines, fake_client):
@@ -127,6 +130,8 @@ def test_parse_error(fake_client):
 
 
 def test_tool_error_returns_internal_error(monkeypatch):
+    monkeypatch.setattr(mcp_mod, "load_config",
+                        lambda: {"api_key": "ckey_live_testkey0123456789abcdef"})
     class BrokenClient(FakeMCPClient):
         def search(self, *a, **kw):
             raise ValueError("bad args")
@@ -137,3 +142,23 @@ def test_tool_error_returns_internal_error(monkeypatch):
     responses = _run([json.dumps(req)], monkeypatch)
     assert responses[0]["error"]["code"] == -32603
     assert "bad args" in responses[0]["error"]["message"]
+
+
+def test_tools_call_keyless_is_auth_error(fake_client, monkeypatch):
+    """Without a stored credential every tool call fails closed with setup
+    guidance — while initialize/ping still answer (handshake must succeed)."""
+    monkeypatch.setattr(mcp_mod, "load_config", lambda: {})
+    req = {"jsonrpc": "2.0", "id": 11, "method": "tools/call",
+           "params": {"name": "conceptio_search", "arguments": {"query": "x"}}}
+    responses = _run([json.dumps(req)], fake_client)
+    result = responses[0]["result"]
+    assert result["isError"] is True
+    assert "Authentication required" in result["content"][0]["text"]
+    assert "conceptio auth" in result["content"][0]["text"]
+
+
+def test_initialize_keyless_still_answers(fake_client, monkeypatch):
+    monkeypatch.setattr(mcp_mod, "load_config", lambda: {})
+    responses = _run([json.dumps({"jsonrpc": "2.0", "id": 12, "method": "initialize"})],
+                     fake_client)
+    assert responses[0]["result"]["serverInfo"]["name"] == "conceptio-mcp"

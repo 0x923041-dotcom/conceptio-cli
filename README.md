@@ -1,12 +1,12 @@
 # conceptio-search
 
-**Search 580,000+ open-access papers, standards, textbooks, and legal documents — right from your terminal or your AI agent.**
+**Search the open-access archive — papers, standards, textbooks, and legal documents — right from your terminal or your AI agent.**
 
-`conceptio-search` is a zero-configuration CLI and [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for the [Conceptio Open Knowledge Archive](https://conceptio.app). Every source in the archive is open access or public domain — no paywalls, no accounts required to search.
+`conceptio-search` is a CLI and [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for the [Conceptio Open Knowledge Archive](https://conceptio.app). Every source in the archive is open access or public domain. The CLI authenticates with an API key: sign in once, save the key, search from anywhere.
 
 - **For humans** — search, export citations in 11 formats (BibTeX, APA, MLA, Chicago, IEEE, Harvard, RIS, Bluebook, OSCOLA, ISO 690, ANSI Z39), and download PDFs to disk with one command.
 - **For AI agents** — a stdio MCP server with five tools, so Claude, Cursor, Windsurf, OpenCode, or any MCP client can search, resolve identifiers (RFC, DOI, arXiv, PMID, PMCID, NIST/FIPS, W3C, US case citation), and save PDFs into your workspace.
-- **100% self-contained** — talks only to the public HTTPS API. No API keys, no sign-up, no internal infrastructure.
+- **100% self-contained** — talks only to the public HTTPS API. No internal infrastructure; your key lives in `~/.conceptio/config.json`.
 
 ---
 
@@ -25,6 +25,23 @@ pip install .
 ```
 
 Requires Python 3.8+.
+
+---
+
+## Authenticate (one time)
+
+The CLI needs an API key before it can search:
+
+```bash
+conceptio auth ckey_live_...
+```
+
+Get the key by signing in at [conceptio.app](https://conceptio.app) and
+creating one on your profile (Pro or Institutional). The key is stored in
+`~/.conceptio/config.json` and sent as `X-Api-Key` with every request.
+`conceptio quota` reports your tier at any time. Every command below
+assumes this step is done — without a key the CLI refuses to run and tells
+you exactly this.
 
 ---
 
@@ -181,27 +198,28 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | conceptio mcp
 
 ## Fair use
 
-Every source in Conceptio is open access or public domain, and searching is free.
-To keep the archive open for everyone, a trial allowance applies per client
-(and then a rate limit). When a limit is reached, the CLI returns a clear,
-non-blocking message:
-
-```text
-Free trial allowance exhausted. Add a license key or API key to continue at
-higher limits: docs at https://conceptio.app or `conceptio auth <key>`.
-```
+Every source in Conceptio is open access or public domain. The CLI sends
+your API key with every request and is rate-limited per tier (see the
+[rate limits](https://conceptio.app/docs#rate-limits)); the browser keeps a
+separate free trial for casual searching without an account.
 
 Add a credential once with `conceptio auth <key>` — it is stored in
 `~/.conceptio/config.json` and sent with every request. `conceptio auth`
-accepts either a **Pro license key** (`CONCEPTIO-XXXX-XXXX-XXXX`, one-time /
-account-bound) or a **self-hosted API key** (`ckey_live_...`, the
+accepts either a **self-hosted API key** (`ckey_live_...`, the
 agent/machine credential issued from your account — store it plainly, it is
-hashed server-side and shown only once). API keys are `X-Api-Key`; license
-keys are `X-License-Key`; exactly one credential is sent.
+hashed server-side and shown only once) or a **Pro license key**
+(`CONCEPTIO-XXXX-XXXX-XXXX`, one-time / account-bound). API keys are
+`X-Api-Key`; license keys are `X-License-Key`; exactly one credential is sent.
 
-No account or sign-up is required to search. `conceptio quota` reports your
-current tier (`public` / `pro` / `institutional`) and which auth the server
-honored (`api_key` / `license` / `firebase` / `public`).
+Without a saved key, every data command exits before touching the network:
+
+```text
+Authentication required — save an API key before searching.
+```
+
+`conceptio quota` reports your current tier (`public` / `pro` /
+`institutional`) and which auth the server honored (`api_key` / `license` /
+`firebase` / `public`).
 
 ---
 
@@ -229,7 +247,7 @@ editing `api_base`. Set `default_limit` to change the search page size; set
 
 ```bash
 pip install -e ".[test]"     # or: pip install -e . && pip install pytest
-pytest tests/                # 50 offline tests (mocked HTTP, no network)
+pytest tests/                # 60 offline tests (mocked HTTP, no network)
 ```
 
 The test suite is fully offline — `httpx` is patched with a `MockTransport`

@@ -65,3 +65,11 @@ def set_api_key(key: str) -> None:
 
 def get_api_key() -> str:
     return str(load_config().get("api_key", "") or "")
+
+
+AUTH_REQUIRED_HINT = (
+    "Authentication required — save an API key before searching.\n"
+    "  1. Sign in at https://www.conceptio.app\n"
+    "  2. Create a key on your profile (Pro or Institutional)\n"
+    "  3. Run: conceptio auth ckey_live_..."
+)

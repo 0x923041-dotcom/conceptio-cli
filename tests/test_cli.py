@@ -88,7 +88,16 @@ def _stub_client(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_mod, "set_api_key", lambda k: None)
     monkeypatch.setattr(
         cli_mod, "load_config",
-        lambda: {"default_limit": 10, "default_citation_format": "bibtex"},
+        lambda: {"default_limit": 10, "default_citation_format": "bibtex",
+                 "api_key": "ckey_live_testkey0123456789abcdef"},
+    )
+
+
+def _keyless(monkeypatch):
+    monkeypatch.setattr(
+        cli_mod, "load_config",
+        lambda: {"default_limit": 10, "default_citation_format": "bibtex",
+                 "api_key": "", "license_key": ""},
     )
 
 
@@ -219,7 +228,6 @@ def test_unknown_command_exits_with_usage(capsys):
     assert exc.value.code == 2
     assert "usage:" in (capsys.readouterr().err or "").lower()
 
-
 def test_version(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
@@ -229,3 +237,42 @@ def test_version(capsys):
     # the version must resolve to something real, not an empty/undefined string
     ver = out.split("conceptio-cli", 1)[-1].strip()
     assert ver and all(part.isdigit() for part in ver.split(".")[:3])
+
+
+@pytest.mark.parametrize("argv", [
+    ["search", "attention"],
+    ["resolve", "RFC 2119"],
+    ["download", "1", "-o", "a.pdf"],
+    ["cite", "1"],
+    ["info", "1"],
+])
+def test_data_commands_require_auth(capsys, monkeypatch, argv):
+    """Keyless runs refuse before any network call, with setup guidance."""
+    _keyless(monkeypatch)
+    assert main(argv) == 1
+    out = capsys.readouterr().out
+    assert "Authentication required" in out
+    assert "conceptio auth" in out
+
+
+def test_mcp_refuses_keyless_on_stderr(capsys, monkeypatch):
+    _keyless(monkeypatch)
+    assert main(["mcp"]) == 1
+    err = capsys.readouterr().err
+    assert "Authentication required" in err
+
+
+def test_license_key_satisfies_gate(capsys, monkeypatch):
+    monkeypatch.setattr(
+        cli_mod, "load_config",
+        lambda: {"default_limit": 10, "default_citation_format": "bibtex",
+                 "api_key": "", "license_key": "CONCEPTIO-AAAA-BBBB-CCCC"},
+    )
+    assert main(["search", "attention", "--json"]) == 0
+
+
+def test_auth_and_quota_stay_keyless(capsys, monkeypatch):
+    """auth/quota/help never gate — they are the recovery path."""
+    _keyless(monkeypatch)
+    assert main(["quota"]) == 0
+    assert main([]) == 0

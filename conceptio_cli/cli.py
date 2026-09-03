@@ -7,7 +7,7 @@ from typing import Optional
 
 from . import __version__
 from .client import ConceptioClient, ConceptioError
-from .config import load_config, set_api_key, set_license_key
+from .config import AUTH_REQUIRED_HINT, load_config, set_api_key, set_license_key
 from .formatter import console, print_document_info, print_search_results, to_markdown
 
 CITE_FORMATS = ["bibtex", "apa", "mla", "chicago", "ieee", "harvard", "ris", "bluebook", "oscola", "iso690", "ansiz39"]
@@ -77,8 +77,8 @@ def handle_quota(client: ConceptioClient) -> int:
         console.print(f"[yellow]Auth:[/] saved credential not recognized by the API — double-check it.")
     console.print(f"[bold]Tier:[/] [cyan]{tier}[/]")
     if tier == "public":
-        console.print("  [dim]Free tier - 50 trial requests included, rate-limited. "
-                      "Upgrade at https://conceptio.app or connect a Pro API key.[/]")
+        console.print("  [dim]Free tier (browser trial) — the CLI itself needs an API key: "
+                      "run `conceptio auth <key>`.[/]")
     elif tier == "pro":
         console.print("  [green]Pro — higher rate limit. Thank you for supporting the archive![/]")
     elif tier == "institutional":
@@ -89,6 +89,21 @@ def handle_quota(client: ConceptioClient) -> int:
 def _is_api_key(key: str) -> bool:
     """API keys are ckey_live_...; everything else is treated as a license key."""
     return key.lower().startswith("ckey_")
+
+
+def require_auth() -> bool:
+    """Refuse keyless usage: every data command needs a stored credential.
+
+    Returns True when an API key or license key is configured, else prints
+    how to authenticate and returns False. Deliberately client-side: the
+    public API tier still serves browsers; this gate keeps the CLI and MCP
+    server behind authentication.
+    """
+    cfg = load_config()
+    if str(cfg.get("api_key") or "").strip() or str(cfg.get("license_key") or "").strip():
+        return True
+    console.print(f"[bold red][ERR][/] {AUTH_REQUIRED_HINT}")
+    return False
 
 
 def handle_auth(key: str) -> int:
@@ -122,9 +137,10 @@ def main(argv: Optional[list] = None) -> int:
     _prepare_stdio()
     parser = argparse.ArgumentParser(
         prog="conceptio",
-        description="Conceptio — the document retrieval layer for AI agents. Search 580,000+ "
-                    "open-access papers, standards, textbooks and legal documents with "
-                    "license-aware access, export citations, and download PDFs. Also runs "
+        description="Conceptio — the document retrieval layer for AI agents. Search the "
+                    "open-access archive of papers, standards, textbooks and legal documents with "
+                    "license-aware access, export citations, and download PDFs. Requires an API key "
+                    "(`conceptio auth`) — sign in at https://www.conceptio.app to get one. Also runs "
                     "an MCP server so agents can query the archive directly.",
     )
     parser.add_argument("--version", action="version", version=f"conceptio-cli {__version__}")
@@ -172,6 +188,8 @@ def main(argv: Optional[list] = None) -> int:
 
     try:
         if args.command == "search":
+            if not require_auth():
+                return 1
             client = ConceptioClient()
             limit = args.limit or int(load_config().get("default_limit", 10))
             data = client.search(
@@ -187,6 +205,8 @@ def main(argv: Optional[list] = None) -> int:
             return 0
 
         if args.command == "resolve":
+            if not require_auth():
+                return 1
             client = ConceptioClient()
             try:
                 data = client.resolve(args.id, limit=args.limit)
@@ -226,9 +246,13 @@ def main(argv: Optional[list] = None) -> int:
             return 0
 
         if args.command == "download":
+            if not require_auth():
+                return 1
             return handle_download(ConceptioClient(), args.target, args.output)
 
         if args.command == "cite":
+            if not require_auth():
+                return 1
             client = ConceptioClient()
             fmt = args.format or load_config().get("default_citation_format", "bibtex")
             try:
@@ -239,6 +263,8 @@ def main(argv: Optional[list] = None) -> int:
             return 0
 
         if args.command == "info":
+            if not require_auth():
+                return 1
             try:
                 print_document_info(ConceptioClient().get_document(args.doc_id))
             except ConceptioError as e:
@@ -253,6 +279,11 @@ def main(argv: Optional[list] = None) -> int:
             return handle_quota(ConceptioClient())
 
         if args.command == "mcp":
+            if not require_auth():
+                # stdout must stay pure JSON-RPC for the agent host — the
+                # guidance goes to stderr instead of the console.
+                print(AUTH_REQUIRED_HINT, file=sys.stderr)
+                return 1
             from .mcp_server import run_mcp_server
             return run_mcp_server()
 
