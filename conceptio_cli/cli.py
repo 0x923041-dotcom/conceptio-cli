@@ -103,7 +103,7 @@ def handle_quota(client: ConceptioClient) -> int:
             console.print("  [dim]Throughput: 60 req/min[/]")
         else:
             console.print("  [green]Pro — 2,000 searches/week. Thank you for supporting the archive![/]")
-    elif tier == "institutional":
+    elif tier in ("enterprise", "institutional"):
         console.print("  [green]Enterprise — unlimited searches via your organization.[/]")
     return 0
 
