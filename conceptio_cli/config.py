@@ -47,6 +47,7 @@ def save_config(cfg: Dict[str, Any]) -> None:
 def set_license_key(key: str) -> None:
     cfg = load_config()
     cfg["license_key"] = key.strip()
+    cfg["api_key"] = ""
     save_config(cfg)
 
 
