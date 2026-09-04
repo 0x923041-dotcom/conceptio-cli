@@ -84,12 +84,25 @@ def handle_quota(client: ConceptioClient) -> int:
                               "your browser and agents share this allowance.")
             else:
                 console.print("  [yellow]Free plan: 50-search allowance used up — "
-                              "upgrade to Pro for unlimited access.[/]")
+                              "upgrade to Pro (2,000 searches/week) at conceptio.app.[/]")
         else:
             console.print("  [dim]Free plan — sign in on conceptio.app to mint an API key "
                           "for your agents (all searches share one allowance).[/]")
     elif tier == "pro":
-        console.print("  [green]Pro — unlimited searches. Thank you for supporting the archive![/]")
+        weekly_limit = data.get("weekly_search_limit")
+        weekly_used = data.get("weekly_search_used")
+        weekly_remaining = data.get("weekly_search_remaining")
+        reset_at = data.get("weekly_reset_at")
+        if weekly_limit is not None and weekly_used is not None:
+            console.print(
+                f"  [green]Pro plan: {weekly_used} of {weekly_limit} weekly searches used[/] "
+                f"({weekly_remaining} remaining)."
+            )
+            if reset_at:
+                console.print(f"  [dim]Quota resets: {reset_at} (every Monday 00:00 UTC)[/]")
+            console.print("  [dim]Throughput: 60 req/min (1 req/sec quiet smoothing)[/]")
+        else:
+            console.print("  [green]Pro — 2,000 searches/week. Thank you for supporting the archive![/]")
     elif tier == "institutional":
         console.print("  [green]Institutional — unlimited searches via your institution.[/]")
     return 0

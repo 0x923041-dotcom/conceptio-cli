@@ -6,6 +6,7 @@ clients must target www). No internal keys, configs, or infrastructure.
 """
 
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -103,7 +104,16 @@ class ConceptioClient:
                 with httpx.Client(timeout=15.0, follow_redirects=True) as client:
                     resp = client.get(url, params=params, headers=self._headers())
                 if resp.status_code == 429:
-                    return {"error": UPGRADE_HINT, "results": []}
+                    retry_after = resp.headers.get("Retry-After")
+                    if retry_after and attempt == 0:
+                        try:
+                            wait_s = min(max(float(retry_after), 0.5), 2.0)
+                            time.sleep(wait_s)
+                            continue
+                        except Exception:
+                            pass
+                    detail = _server_detail(resp)
+                    return {"error": detail or UPGRADE_HINT, "results": []}
                 if resp.status_code == 401:
                     # 401: no stored credential, or the one saved was rejected.
                     # The fix is to store a valid key and retry.
@@ -213,7 +223,7 @@ class ConceptioClient:
             with httpx.Client(timeout=45.0, follow_redirects=True) as client:
                 with client.stream("GET", url, headers=self._headers()) as stream_resp:
                     if stream_resp.status_code == 429:
-                        raise ConceptioError(UPGRADE_HINT)
+                        raise ConceptioError(_server_detail(stream_resp) or "Rate limit exceeded. Try again shortly.")
                     if stream_resp.status_code == 403:
                         raise ConceptioError(_server_detail(stream_resp) or UPGRADE_HINT)
                     stream_resp.raise_for_status()
