@@ -298,7 +298,7 @@ def test_401_maps_to_auth_hint_loudly():
 def test_403_trial_exhausted_surfaces_server_detail():
     def handler(request):
         return httpx.Response(
-            403, json={"detail": "Free trial exhausted (50 lifetime searches) — upgrade to Pro for unlimited access."},
+            403, json={"detail": "Free trial exhausted (200 lifetime searches) — upgrade to Pro (2,000 searches/week) for higher limits."},
             request=request,
         )
 

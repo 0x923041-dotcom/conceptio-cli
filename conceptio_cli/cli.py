@@ -80,10 +80,10 @@ def handle_quota(client: ConceptioClient) -> int:
     if tier == "public":
         if isinstance(trial_remaining, int):
             if trial_remaining > 0:
-                console.print(f"  [cyan]Free plan: {trial_remaining} of 50 searches left[/] — "
+                console.print(f"  [cyan]Free plan: {trial_remaining} of 200 searches left[/] — "
                               "your browser and agents share this allowance.")
             else:
-                console.print("  [yellow]Free plan: 50-search allowance used up — "
+                console.print("  [yellow]Free plan: 200-search allowance used up — "
                               "upgrade to Pro (2,000 searches/week) at conceptio.app.[/]")
         else:
             console.print("  [dim]Free plan — sign in on conceptio.app to mint an API key "
@@ -149,7 +149,7 @@ def handle_auth(key: str) -> int:
             console.print(f"[bold green][OK][/] Key accepted - tier: [cyan]{tier}[/]")
             tr = data.get("trial_remaining")
             if tier == "public" and isinstance(tr, int):
-                console.print(f"[dim]Free plan: {tr} of 50 searches remaining — agents share the "
+                console.print(f"[dim]Free plan: {tr} of 200 searches remaining — agents share the "
                               "account allowance with the web app.[/]")
         else:
             console.print("[yellow]Key saved but the API still reports the free tier — "

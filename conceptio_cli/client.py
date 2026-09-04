@@ -119,7 +119,7 @@ class ConceptioClient:
                     # The fix is to store a valid key and retry.
                     raise ConceptioError(AUTH_REQUIRED_HINT)
                 if resp.status_code == 403:
-                    # 403 on the free plan: the account's 50-search allowance
+                    # 403 on the free plan: the account's 200-search allowance
                     # is spent (the web app and your agents share one balance).
                     raise ConceptioError(_server_detail(resp) or UPGRADE_HINT)
                 resp.raise_for_status()
