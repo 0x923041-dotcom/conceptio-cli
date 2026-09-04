@@ -100,11 +100,11 @@ def handle_quota(client: ConceptioClient) -> int:
             )
             if reset_at:
                 console.print(f"  [dim]Quota resets: {reset_at} (every Monday 00:00 UTC)[/]")
-            console.print("  [dim]Throughput: 60 req/min (1 req/sec quiet smoothing)[/]")
+            console.print("  [dim]Throughput: 60 req/min[/]")
         else:
             console.print("  [green]Pro — 2,000 searches/week. Thank you for supporting the archive![/]")
     elif tier == "institutional":
-        console.print("  [green]Institutional — unlimited searches via your institution.[/]")
+        console.print("  [green]Enterprise — unlimited searches via your organization.[/]")
     return 0
 
 
