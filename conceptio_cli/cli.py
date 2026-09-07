@@ -3,10 +3,11 @@
 import argparse
 import json
 import sys
+import webbrowser
 from typing import Optional
 
 from . import __version__
-from .client import ConceptioClient, ConceptioError
+from .client import ConceptioClient, ConceptioError, build_obsidian_uri
 from .config import AUTH_REQUIRED_HINT, load_config, set_api_key, set_license_key
 from .formatter import console, print_document_info, print_search_results, to_markdown
 
@@ -52,6 +53,55 @@ def handle_download(client: ConceptioClient, target: str, output: Optional[str])
     except OSError as e:
         console.print(f"[bold red][ERR][/] Could not write {out}: {e}")
         return 1
+
+
+def _connector_error(error: ConceptioError) -> int:
+    reason = getattr(error, "reason", "")
+    if reason == "zotero_not_configured":
+        console.print("[bold red][ERR][/] Configure Zotero in the Conceptio profile before saving.")
+    elif reason == "zotero_auth":
+        console.print("[bold red][ERR][/] Zotero rejected the saved credentials; reconnect Zotero in the profile.")
+    elif reason == "connectors_bulk_pro":
+        console.print("[bold red][ERR][/] Bulk connector export is included in the Pro plan.")
+    elif reason == "connectors_exhausted":
+        console.print("[bold red][ERR][/] The shared connector trial is used up; upgrade to Pro.")
+    else:
+        console.print(f"[bold red][ERR][/] {error}")
+    return 1
+
+
+def handle_save(client: ConceptioClient, destination: str, doc_id: Optional[int], vault: str = "", all_saved: bool = False) -> int:
+    """Save through the public API; entitlement and ownership stay server-side."""
+    if all_saved:
+        if destination != "zotero":
+            console.print("[bold red][ERR][/] --all-saved is currently supported only for Zotero.")
+            return 1
+        console.print("[bold red][ERR][/] --all-saved requires a JSON file of document ids via --ids.")
+        return 1
+    if doc_id is None or doc_id < 1:
+        console.print("[bold red][ERR][/] A positive document id is required.")
+        return 1
+    try:
+        if destination == "zotero":
+            result = client.send_zotero(doc_id)
+            status = "Already saved in Zotero." if result.get("idempotent") else "Saved to Zotero."
+            console.print(f"[bold green][OK][/] {status}")
+        else:
+            authorized = client.authorize_obsidian(doc_id)
+            uri = build_obsidian_uri(authorized, vault=vault)
+            opened = webbrowser.open(uri)
+            # A CLI has no reliable callback for a custom URI. Log the handoff
+            # after handing it to the OS; the server remains authoritative for
+            # entitlement, idempotency, and the trial decrement.
+            result = client.log_obsidian(doc_id) if opened else {}
+            if opened and result:
+                console.print("[bold green][OK][/] Opened metadata in Obsidian.")
+            else:
+                console.print("[yellow]Obsidian URI generated but was not opened; no save was logged.[/]")
+                print(uri)
+        return 0
+    except ConceptioError as error:
+        return _connector_error(error)
 
 
 def handle_quota(client: ConceptioClient) -> int:
@@ -173,7 +223,8 @@ def main(argv: Optional[list] = None) -> int:
     sub = parser.add_subparsers(dest="command", metavar="command")
 
     sp = sub.add_parser("search", help="Search the archive (supports source:/lang:/category: directives)")
-    sp.add_argument("query", help="Query, e.g. 'attention is all you need' or 'source:nist zero trust'")
+    sp.add_argument("query", nargs="?", help="Query, e.g. 'attention is all you need' or 'source:nist zero trust'")
+    sp.add_argument("--batch", metavar="QUERIES_JSON", help="Queue 1–50 query objects from a JSON file")
     sp.add_argument("-l", "--limit", type=int, default=None, help="Number of results (default: config, 10)")
     sp.add_argument("--offset", type=int, default=0, help="Pagination offset (default: 0)")
     sp.add_argument("-c", "--category", help="Filter by category (e.g. 'Computer Science & Tech')")
@@ -205,6 +256,17 @@ def main(argv: Optional[list] = None) -> int:
 
     sub.add_parser("quota", help="Show current tier / license status")
 
+    sp = sub.add_parser("save", help="Save one document to Zotero or Obsidian")
+    sp.add_argument("--to", dest="destination", required=True, choices=("zotero", "obsidian"), help="Connector destination")
+    sp.add_argument("doc_id", nargs="?", type=int, help="Conceptio document id")
+    sp.add_argument("--vault", default="", help="Obsidian vault name (sanitized before handoff)")
+    sp.add_argument("--all-saved", action="store_true", help="Bulk-save document ids from --ids to Zotero (Pro only)")
+    sp.add_argument("--ids", metavar="IDS_JSON", help="JSON list or {\"doc_ids\": [...]} for --all-saved")
+
+    sp = sub.add_parser("search-job", help="Poll an asynchronous search job once")
+    sp.add_argument("job_id", help="Job id returned by `conceptio search --batch queries.json --json`")
+    sp.add_argument("--json", action="store_true", help="Output raw JSON")
+
     sub.add_parser("mcp", help="Start the stdio Model Context Protocol server for AI agents")
 
     args = parser.parse_args(argv)
@@ -217,6 +279,29 @@ def main(argv: Optional[list] = None) -> int:
             if not require_auth():
                 return 1
             client = ConceptioClient()
+            if args.batch:
+                try:
+                    with open(args.batch, "r", encoding="utf-8") as source:
+                        queries = json.load(source)
+                except (OSError, ValueError) as e:
+                    console.print(f"[bold red][ERR][/] Could not read batch JSON: {e}")
+                    return 1
+                if isinstance(queries, dict):
+                    queries = queries.get("queries")
+                if not isinstance(queries, list):
+                    console.print("[bold red][ERR][/] Batch JSON must be a list or an object with a `queries` list.")
+                    return 1
+                try:
+                    data = client.submit_search_job(queries)
+                except ConceptioError as e:
+                    console.print(f"[bold red][ERR][/] {e}")
+                    return 1
+                print(json.dumps(data, indent=2) if args.json else
+                      f"Queued search job {data.get('id', '(unknown)')} — poll with `conceptio search-job {data.get('id', '')}`")
+                return 0
+            if not args.query:
+                console.print("[bold red][ERR][/] A query or --batch JSON file is required.")
+                return 1
             limit = args.limit or int(load_config().get("default_limit", 10))
             data = client.search(
                 args.query, limit=limit, offset=args.offset,
@@ -303,6 +388,51 @@ def main(argv: Optional[list] = None) -> int:
 
         if args.command == "quota":
             return handle_quota(ConceptioClient())
+
+        if args.command == "save":
+            if not require_auth():
+                return 1
+            if args.all_saved:
+                if not args.ids:
+                    console.print("[bold red][ERR][/] --all-saved requires --ids path.")
+                    return 1
+                try:
+                    with open(args.ids, "r", encoding="utf-8") as source:
+                        ids_payload = json.load(source)
+                    doc_ids = ids_payload.get("doc_ids") if isinstance(ids_payload, dict) else ids_payload
+                    if not isinstance(doc_ids, list):
+                        raise ValueError("expected a JSON list or an object with doc_ids")
+                    result = ConceptioClient().send_zotero_all(doc_ids)
+                    console.print(f"[bold green][OK][/] Saved {result.get('total', len(doc_ids))} document(s) to Zotero.")
+                    return 0
+                except (OSError, ValueError, ConceptioError) as error:
+                    if isinstance(error, ConceptioError):
+                        return _connector_error(error)
+                    console.print(f"[bold red][ERR][/] Could not read --ids JSON: {error}")
+                    return 1
+            return handle_save(
+                ConceptioClient(), args.destination, args.doc_id,
+                vault=args.vault, all_saved=False,
+            )
+
+        if args.command == "search-job":
+            if not require_auth():
+                return 1
+            try:
+                data = ConceptioClient().get_search_job(args.job_id)
+            except ConceptioError as e:
+                console.print(f"[bold red][ERR][/] {e}")
+                return 1
+            if args.json:
+                print(json.dumps(data, indent=2))
+            else:
+                status = data.get("status", "unknown")
+                console.print(f"[bold]Job {data.get('id', args.job_id)}:[/] [cyan]{status}[/]")
+                if data.get("result") is not None:
+                    print(json.dumps(data["result"], indent=2))
+                if data.get("error"):
+                    console.print(f"[bold red][ERR][/] {data['error']}")
+            return 0
 
         if args.command == "mcp":
             if not require_auth():

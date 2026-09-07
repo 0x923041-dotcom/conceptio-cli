@@ -16,7 +16,10 @@ class FakeMCPClient:
         self.license_key = ""
 
     def search(self, query, limit=10, category=None):
-        return {"total": 1, "results": [{"id": 1, "title": "Paper", "direct_pdf_url": "https://x/p.pdf"}]}
+        return {"total": 1, "results": [{"id": 1, "title": "Paper", "direct_pdf_url": "https://x/p.pdf"}], "attribution": {"text": "Provided by Conceptio.", "url": "https://www.conceptio.app"}}
+
+    def submit_search_job(self, queries):
+        return {"id": "job12345678", "status": "queued", "poll_url": "/api/search/jobs/job12345678"}
 
     def get_document(self, doc_id):
         return {"id": doc_id, "title": "Paper"}
@@ -30,6 +33,18 @@ class FakeMCPClient:
 
     def download_by_target(self, target, out):
         return out
+
+    def send_zotero(self, doc_id):
+        return {"ok": True, "connector": "zotero", "doc_id": doc_id, "idempotent": False}
+
+    def send_zotero_all(self, doc_ids):
+        return {"ok": True, "connector": "zotero", "total": len(doc_ids), "results": []}
+
+    def authorize_obsidian(self, doc_id):
+        return {"doc_id": doc_id, "title": "Paper", "canonical_url": "https://www.conceptio.app/document/1/paper"}
+
+    def send_connector(self, connector, doc_id, vault=""):
+        return {"connector": connector, "doc_id": doc_id, "vault": vault}
 
 
 @pytest.fixture
@@ -65,11 +80,16 @@ def test_initialize_returns_server_info(fake_client):
     assert res["result"]["protocolVersion"] == "2024-11-05"
 
 
-def test_tools_list_has_five_tools(fake_client):
+def test_tools_list_has_eight_tools(fake_client):
     responses = _run([json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})], fake_client)
     names = [t["name"] for t in responses[0]["result"]["tools"]]
-    assert names == ["conceptio_search", "conceptio_resolve", "conceptio_download_pdf", "conceptio_get_citation", "conceptio_get_document"]
-    assert len(TOOLS) == 5
+    assert names == [
+        "conceptio_search", "conceptio_resolve", "conceptio_download_pdf",
+        "conceptio_get_citation", "conceptio_search_batch",
+        "conceptio_connectors_send", "conceptio_connectors_send_all",
+        "conceptio_get_document",
+    ]
+    assert len(TOOLS) == 8
 
 
 def test_tools_call_resolve(fake_client):
@@ -79,6 +99,40 @@ def test_tools_call_resolve(fake_client):
     payload = json.loads(responses[0]["result"]["content"][0]["text"])
     assert payload["kind"] == "rfc"
     assert payload["results"][0]["id"] == 304793
+
+
+def test_tools_call_search_batch(fake_client):
+    req = {"jsonrpc": "2.0", "id": 13, "method": "tools/call",
+           "params": {"name": "conceptio_search_batch", "arguments": {"queries": [{"q": "attention"}]}}}
+    responses = _run([json.dumps(req)], fake_client)
+    payload = json.loads(responses[0]["result"]["content"][0]["text"])
+    assert payload["status"] == "queued"
+    assert payload["id"] == "job12345678"
+
+
+def test_tools_call_connector_send(fake_client):
+    req = {"jsonrpc": "2.0", "id": 14, "method": "tools/call",
+           "params": {"name": "conceptio_connectors_send", "arguments": {"connector": "zotero", "doc_id": 7}}}
+    responses = _run([json.dumps(req)], fake_client)
+    payload = json.loads(responses[0]["result"]["content"][0]["text"])
+    assert payload["connector"] == "zotero"
+    assert payload["doc_id"] == 7
+
+
+def test_tools_call_connector_bulk(fake_client):
+    req = {"jsonrpc": "2.0", "id": 15, "method": "tools/call",
+           "params": {"name": "conceptio_connectors_send_all", "arguments": {"doc_ids": [1, 2]}}}
+    responses = _run([json.dumps(req)], fake_client)
+    payload = json.loads(responses[0]["result"]["content"][0]["text"])
+    assert payload["total"] == 2
+
+
+def test_tools_call_search_preserves_attribution(fake_client):
+    req = {"jsonrpc": "2.0", "id": 16, "method": "tools/call",
+           "params": {"name": "conceptio_search", "arguments": {"query": "attention", "limit": 5}}}
+    responses = _run([json.dumps(req)], fake_client)
+    payload = json.loads(responses[0]["result"]["content"][0]["text"])
+    assert payload["attribution"]["url"] == "https://www.conceptio.app"
 
 
 def test_tools_call_search(fake_client):

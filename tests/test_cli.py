@@ -80,6 +80,18 @@ class FakeClient:
     def download_by_target(self, target, out):
         return out
 
+    def send_zotero(self, doc_id):
+        return {"idempotent": False, "doc_id": doc_id}
+
+    def send_zotero_all(self, doc_ids):
+        return {"total": len(doc_ids), "results": []}
+
+    def authorize_obsidian(self, doc_id):
+        return {"doc_id": doc_id, "title": "Paper", "canonical_url": "https://www.conceptio.app/document/1/paper"}
+
+    def log_obsidian(self, doc_id):
+        return {"ok": True}
+
 
 @pytest.fixture(autouse=True)
 def _stub_client(monkeypatch, tmp_path):
@@ -219,6 +231,29 @@ def test_download(capsys, tmp_path):
     out = tmp_path / "a.pdf"
     assert main(["download", "1", "-o", str(out)]) == 0
     assert "Saved" in capsys.readouterr().out
+
+
+def test_save_zotero(capsys):
+    assert main(["save", "--to", "zotero", "1"]) == 0
+    assert "Saved to Zotero" in capsys.readouterr().out
+
+
+def test_save_obsidian_with_vault(capsys, monkeypatch):
+    monkeypatch.setattr(cli_mod.webbrowser, "open", lambda uri: True)
+    assert main(["save", "--to", "obsidian", "1", "--vault", "Research"]) == 0
+    assert "Obsidian" in capsys.readouterr().out
+
+
+def test_save_all_requires_ids(capsys):
+    assert main(["save", "--to", "zotero", "--all-saved"]) == 1
+    assert "--ids" in capsys.readouterr().out
+
+
+def test_save_all_zotero(capsys, tmp_path):
+    ids = tmp_path / "ids.json"
+    ids.write_text(json.dumps({"doc_ids": [1, 2]}), encoding="utf-8")
+    assert main(["save", "--to", "zotero", "--all-saved", "--ids", str(ids)]) == 0
+    assert "Saved 2" in capsys.readouterr().out
 
 
 def test_unknown_command_exits_with_usage(capsys):

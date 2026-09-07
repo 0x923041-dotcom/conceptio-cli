@@ -123,6 +123,16 @@ def test_parse_directives_no_directives():
 
 
 # ── search ────────────────────────────────────────────────────────────────────
+def test_search_preserves_additive_free_attribution():
+    client = _make_client(_json_handler({
+        "total": 0,
+        "results": [],
+        "attribution": {"text": "Provided by Conceptio.", "url": "https://www.conceptio.app"},
+    }), api_key="ckey_live_abcdef0123456789abcdef0123456789")
+    data = client.search("hello")
+    assert data["attribution"] == {"text": "Provided by Conceptio.", "url": "https://www.conceptio.app"}
+
+
 def test_search_sends_clean_params():
     seen = {}
 
@@ -235,6 +245,45 @@ def test_api_key_wins_over_license_key():
 
 
 # ── document / citation ───────────────────────────────────────────────────────
+def test_submit_and_poll_search_job():
+    seen = []
+
+    def handler(request):
+        seen.append((request.method, request.url.path, request.content))
+        if request.url.path.endswith("/jobs"):
+            return httpx.Response(202, json={"id": "job12345678", "status": "queued"}, request=request)
+        return httpx.Response(200, json={"id": "job12345678", "status": "done", "result": {"count": 1}}, request=request)
+
+    client = _make_client(handler, api_key="ckey_live_abcdef0123456789abcdef0123456789")
+    created = client.submit_search_job([{"q": "zero trust", "limit": 5}])
+    assert created["status"] == "queued"
+    assert client.get_search_job("job12345678")["status"] == "done"
+    assert seen[0][0] == "POST"
+    assert seen[1][1].endswith("/jobs/job12345678")
+    assert b"ckey_live" not in seen[0][2]
+
+
+def test_expired_search_job_is_a_friendly_error():
+    def handler(request):
+        return httpx.Response(410, json={"detail": "Search job expired"}, request=request)
+
+    client = _make_client(handler, api_key="ckey_live_abcdef0123456789abcdef0123456789")
+    with pytest.raises(ConceptioError, match="expired"):
+        client.get_search_job("job12345678")
+
+
+def test_submit_search_job_rejects_more_than_fifty():
+    client = ConceptioClient(api_base="https://conceptio.test")
+    with pytest.raises(ConceptioError, match="between 1 and 50"):
+        client.submit_search_job([{"q": "x"}] * 51)
+
+
+def test_get_search_job_rejects_untrusted_id():
+    client = ConceptioClient(api_base="https://conceptio.test")
+    with pytest.raises(ConceptioError, match="invalid format"):
+        client.get_search_job("../../secrets")
+
+
 def test_get_document_and_citation():
     client = _make_client(
         _json_handler({"id": 42, "title": "Paper", "direct_pdf_url": "https://x/a.pdf"})

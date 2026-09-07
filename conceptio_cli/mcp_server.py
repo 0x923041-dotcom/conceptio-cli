@@ -10,6 +10,9 @@ Exposed tools:
   - conceptio_download_pdf    — resolve a doc ID/URL and stream the PDF to disk
   - conceptio_get_citation    — BibTeX/APA/MLA/Chicago citation
   - conceptio_get_document    — full metadata for a document ID
+  - conceptio_search_batch     — queue 1–50 searches and return a polling handle
+  - conceptio_connectors_send   — save one document to Zotero or Obsidian
+  - conceptio_connectors_send_all — Pro-only bulk Zotero save
 """
 
 import json
@@ -112,6 +115,48 @@ TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "conceptio_search_batch",
+        "description": "Queue 1–50 independent searches for bounded background execution. Poll the returned job id with the public API or CLI; each fresh subquery uses one search credit.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "queries": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "description": "Search objects with q and optional sources, category, language, sort, limit, and offset",
+                    "items": {"type": "object"}
+                }
+            },
+            "required": ["queries"]
+        },
+    },
+    {
+        "name": "conceptio_connectors_send",
+        "description": "Save one document to Zotero or open a metadata-only Obsidian handoff. Server-side ownership, connector trial, and failure semantics apply.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "connector": {"type": "string", "enum": ["zotero", "obsidian"]},
+                "doc_id": {"type": "integer"},
+                "vault": {"type": "string", "description": "Optional Obsidian vault name"}
+            },
+            "required": ["connector", "doc_id"]
+        }
+    },
+    {
+        "name": "conceptio_connectors_send_all",
+        "description": "Bulk-save selected documents to Zotero. Pro, institutional, or licensed access is required; no free trial path.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "connector": {"type": "string", "enum": ["zotero"], "default": "zotero"},
+                "doc_ids": {"type": "array", "minItems": 1, "maxItems": 500, "items": {"type": "integer"}}
+            },
+            "required": ["doc_ids"]
+        }
+    },
+    {
         "name": "conceptio_get_document",
         "description": "Fetch complete metadata (title, author, source, license, description, direct PDF URL) for a document ID.",
         "inputSchema": {
@@ -125,6 +170,11 @@ TOOLS: List[Dict[str, Any]] = [
 
 def _text(content: str) -> List[Dict[str, str]]:
     return [{"type": "text", "text": content}]
+
+
+def _with_attribution(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Preserve the API's additive free-tier attribution for MCP consumers."""
+    return data
 
 
 def _workspace_output_path(raw: str) -> str:
@@ -161,11 +211,11 @@ def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Di
     if not (str(cfg.get("api_key") or "").strip() or str(cfg.get("license_key") or "").strip()):
         return {"content": _text(AUTH_REQUIRED_HINT), "isError": True}
     if name == "conceptio_search":
-        data = client.search(
+        data = _with_attribution(client.search(
             args.get("query", ""),
             limit=args.get("limit", 10),
             category=args.get("category"),
-        )
+        ))
         return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
 
     if name == "conceptio_resolve":
@@ -184,6 +234,31 @@ def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Di
     if name == "conceptio_get_citation":
         citation = client.get_citation(int(args.get("doc_id", 0)), format=args.get("format", "bibtex"))
         return {"content": _text(citation)}
+
+    if name == "conceptio_search_batch":
+        queries = args.get("queries")
+        if not isinstance(queries, list) or not 1 <= len(queries) <= 50:
+            raise ConceptioError("queries must contain between 1 and 50 search objects.")
+        if any(not isinstance(item, dict) or not str(item.get("q") or "").strip() for item in queries):
+            raise ConceptioError("Every search object must contain a non-empty q field.")
+        data = client.submit_search_job(queries)
+        return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
+
+    if name == "conceptio_connectors_send":
+        connector = str(args.get("connector") or "").strip().lower()
+        doc_id = int(args.get("doc_id", 0))
+        if connector not in {"zotero", "obsidian"} or doc_id < 1:
+            raise ConceptioError("connector must be zotero or obsidian and doc_id must be positive.")
+        data = client.send_connector(connector, doc_id, vault=str(args.get("vault") or ""))
+        return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
+
+    if name == "conceptio_connectors_send_all":
+        connector = str(args.get("connector") or "zotero").strip().lower()
+        doc_ids = args.get("doc_ids")
+        if connector != "zotero" or not isinstance(doc_ids, list):
+            raise ConceptioError("Bulk connector saves require connector=zotero and a doc_ids array.")
+        data = client.send_zotero_all(doc_ids)
+        return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
 
     if name == "conceptio_get_document":
         doc = client.get_document(int(args.get("doc_id", 0)))

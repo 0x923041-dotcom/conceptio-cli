@@ -5,7 +5,7 @@
 `conceptio-search` is a CLI and [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for the [Conceptio Open Knowledge Archive](https://conceptio.app). Every source in the archive is open access or public domain. The CLI authenticates with an API key: sign in once, save the key, search from anywhere.
 
 - **For humans** — search, export citations in 11 formats (BibTeX, APA, MLA, Chicago, IEEE, Harvard, RIS, Bluebook, OSCOLA, ISO 690, ANSI Z39), and download PDFs to disk with one command.
-- **For AI agents** — a stdio MCP server with five tools, so Claude, Cursor, Windsurf, OpenCode, or any MCP client can search, resolve identifiers (RFC, DOI, arXiv, PMID, PMCID, NIST/FIPS, W3C, US case citation), and save PDFs into your workspace.
+- **For AI agents** — a stdio MCP server with six tools, so Claude, Cursor, Windsurf, OpenCode, or any MCP client can search, queue batch searches, resolve identifiers (RFC, DOI, arXiv, PMID, PMCID, NIST/FIPS, W3C, US case citation), and save PDFs into your workspace.
 - **100% self-contained** — talks only to the public HTTPS API. No internal infrastructure; your key lives in `~/.conceptio/config.json`.
 
 ---
@@ -46,6 +46,8 @@ conceptio search "source:nist zero trust" --category "Computer Science & Tech"
 conceptio search "source:eurlex AI act" --json
 conceptio search "meditations marcus aurelius" --markdown   # for Obsidian/Notion
 conceptio search "diffusion models" --offset 20            # paginate past the first page
+conceptio search --batch queries.json --json                  # queue 1–50 searches
+conceptio search-job <job-id> --json                          # poll once; repeat on your own cadence
 
 # Resolve a known identifier straight to its document(s)
 conceptio resolve "RFC 2119"
@@ -133,6 +135,7 @@ The `conceptio mcp` command starts a stdio JSON-RPC MCP server. It is dependency
 | Tool | Description |
 |------|-------------|
 | `conceptio_search` | Search the archive (`query`, optional `limit` 1–20, optional `category`). Returns structured results with titles, authors, years, source, snippet, and `direct_pdf_url` when available. |
+| `conceptio_search_batch` | Queue 1–50 independent searches and return an opaque job handle. Poll the handle with the API or `conceptio search-job`; the tool never starts an unbounded polling loop. |
 | `conceptio_resolve` | Resolve a known identifier — RFC (`RFC 2119`), DOI (`doi:10.1145/3290605.3300333`), arXiv (`2604.08499`), PubMed ID (`PMID 41961061`), PubMed Central ID (`PMC10601397`), NIST/FIPS designation (`NIST FIPS 199`), W3C spec shortname (`w3c_digital-credentials`), or US legal citation / docket (`410 U.S. 113`, `20-5364`) — straight to its document(s). Unrecognised identifiers fall back to a text search. |
 | `conceptio_download_pdf` | Download the original open-access PDF for a Conceptio document ID or a direct PDF URL to a local path. |
 | `conceptio_get_citation` | Get a citation for a document ID in any of 11 formats (BibTeX, APA, MLA, Chicago, IEEE, Harvard, RIS, Bluebook, OSCOLA, ISO 690, ANSI Z39). |
@@ -174,7 +177,7 @@ Add to `claude_desktop_config.json`:
 ### OpenCode / Windsurf / Antigravity
 
 The same JSON shape works in any MCP-aware client — point it at `conceptio mcp`
-and the five tools above are exposed automatically.
+and the six tools above are exposed automatically.
 
 After adding, restart the client and you can ask, for example:
 
@@ -256,7 +259,7 @@ symlink escapes. Set `default_limit` to change the search page size; set
 
 ```bash
 pip install -e ".[test]"     # or: pip install -e . && pip install pytest
-pytest tests/                # 74 offline tests (mocked HTTP, no network)
+pytest tests/                # offline tests (mocked HTTP, no network)
 ```
 
 The test suite is fully offline — `httpx` is patched with a `MockTransport`
