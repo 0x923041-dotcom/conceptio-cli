@@ -207,7 +207,11 @@ class ConceptioClient:
                     # The fix is to store a valid key and retry.
                     raise ConceptioError(AUTH_REQUIRED_HINT)
                 if resp.status_code == 410:
-                    raise ConceptioError("Search job expired — submit a new job to run these queries again.")
+                    # 410 Gone: async jobs expire (job-specific), and a removed
+                    # document carries a structured tombstone. Use the server's
+                    # own detail when present, else the job-expired default.
+                    detail = _server_detail(resp)
+                    raise ConceptioError(detail or "Search job expired — submit a new job to run these queries again.")
                 if resp.status_code == 403:
                     # 403 on the free plan: the account's 200-search allowance
                     # is spent (the web app and your agents share one balance).
@@ -305,7 +309,11 @@ class ConceptioClient:
                         raise error
                     raise ConceptioError(AUTH_REQUIRED_HINT)
                 if resp.status_code == 410:
-                    raise ConceptioError("Search job expired — submit a new job to run these queries again.")
+                    # 410 Gone: async jobs expire (job-specific), and a removed
+                    # document carries a structured tombstone. Use the server's
+                    # own detail when present, else the job-expired default.
+                    detail = _server_detail(resp)
+                    raise ConceptioError(detail or "Search job expired — submit a new job to run these queries again.")
                 if resp.status_code == 403:
                     error = ConceptioError(_server_detail(resp) or UPGRADE_HINT)
                     error.reason = _server_reason(resp)

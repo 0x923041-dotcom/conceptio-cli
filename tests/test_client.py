@@ -273,6 +273,23 @@ def test_expired_search_job_is_a_friendly_error():
         client.get_search_job("job12345678")
 
 
+def test_tombstoned_document_uses_server_message():
+    """A 410 on a document fetch carries the server's tombstone message
+    ("document removed"), not the job-expired default."""
+    def handler(request):
+        return httpx.Response(410, json={
+            "detail": {
+                "error": "document_removed",
+                "message": "This document was removed from the archive.",
+                "tombstone": {"doc_id": 42, "reason": "pruned"},
+            }
+        }, request=request)
+
+    client = _make_client(handler, api_key="ckey_live_abcdef0123456789abcdef0123456789")
+    with pytest.raises(ConceptioError, match="removed from the archive"):
+        client.get_document(42)
+
+
 def test_submit_search_job_rejects_more_than_fifty():
     client = ConceptioClient(api_base="https://conceptio.test")
     with pytest.raises(ConceptioError, match="between 1 and 50"):
