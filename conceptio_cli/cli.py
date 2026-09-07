@@ -229,6 +229,7 @@ def main(argv: Optional[list] = None) -> int:
     sp.add_argument("--offset", type=int, default=0, help="Pagination offset (default: 0)")
     sp.add_argument("-c", "--category", help="Filter by category (e.g. 'Computer Science & Tech')")
     sp.add_argument("--lang", dest="language", help="Filter by language code (e.g. en, it, fr)")
+    sp.add_argument("--license", choices=("commercial-ok",), help="Require an explicit commercial-use license")
     sp.add_argument("--json", action="store_true", help="Output raw JSON")
     sp.add_argument("--markdown", action="store_true", help="Output markdown (for notes/Obsidian)")
 
@@ -303,10 +304,15 @@ def main(argv: Optional[list] = None) -> int:
                 console.print("[bold red][ERR][/] A query or --batch JSON file is required.")
                 return 1
             limit = args.limit or int(load_config().get("default_limit", 10))
-            data = client.search(
-                args.query, limit=limit, offset=args.offset,
-                category=args.category, language=args.language,
-            )
+            search_kwargs = {
+                "limit": limit,
+                "offset": args.offset,
+                "category": args.category,
+                "language": args.language,
+            }
+            if args.license:
+                search_kwargs["license"] = args.license
+            data = client.search(args.query, **search_kwargs)
             if args.json:
                 print(json.dumps(data, indent=2))
             elif args.markdown:

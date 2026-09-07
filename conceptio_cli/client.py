@@ -244,8 +244,9 @@ class ConceptioClient:
         category: Optional[str] = None,
         language: Optional[str] = None,
         sources: Optional[List[str]] = None,
+        license: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Search the archive. ``query`` may contain ``source:`` directives."""
+        """Search the archive, optionally requiring an explicit commercial-use license."""
         parsed = parse_query_directives(query)
         params: Dict[str, Any] = {
             "q": parsed["query"] or query,
@@ -259,6 +260,8 @@ class ConceptioClient:
             params["category"] = category or parsed["category"]
         if language or parsed["language"]:
             params["language"] = language or parsed["language"]
+        if license:
+            params["license"] = license
         if not (params["q"] or srcs):
             return {"error": "Empty search query.", "results": []}
         return self._get_json("/api/search", params)

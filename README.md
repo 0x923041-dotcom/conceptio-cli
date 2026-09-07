@@ -42,7 +42,7 @@ you exactly this.
 ```bash
 # Search — supports source:/lang:/category: directives
 conceptio search "attention is all you need" --limit 5
-conceptio search "source:nist zero trust" --category "Computer Science & Tech"
+conceptio search "source:nist zero trust" --license commercial-ok
 conceptio search "source:eurlex AI act" --json
 conceptio search "meditations marcus aurelius" --markdown   # for Obsidian/Notion
 conceptio search "diffusion models" --offset 20            # paginate past the first page
@@ -113,6 +113,7 @@ from the query and applied as real filters:
 | `source:` / `src:` | `source:nist` | Restrict to one or more sources (`source:nist source:owasp`) |
 | `lang:` / `language:` | `lang:it` | Restrict to a language (ISO code) |
 | `category:` / `cat:` | `cat:"Law & Regulation"` | Restrict to a category tab |
+| `--license commercial-ok` | `--license commercial-ok` | Keep only sources whose catalog metadata explicitly permits commercial use; this is a conservative filter, not a redistribution grant. |
 
 Directives can be combined freely: `conceptio search "cat:\"Computer Science & Tech\" source:nist lattice cryptography"`.
 

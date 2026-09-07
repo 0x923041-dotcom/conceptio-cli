@@ -142,10 +142,11 @@ def test_search_sends_clean_params():
         return httpx.Response(200, json={"total": 1, "results": []}, request=request)
 
     client = _make_client(handler)
-    client.search("source:nist zero trust", limit=5)
+    client.search("source:nist zero trust", limit=5, license="commercial-ok")
     assert "/api/search" in seen["url"]
     assert seen["params"]["q"] == "zero trust"
     assert seen["params"]["sources"] == "nist"
+    assert seen["params"]["license"] == "commercial-ok"
     assert seen["params"]["limit"] == "5"
 
 

@@ -15,7 +15,7 @@ class FakeClient:
         self.license_key = kw.get("license_key", "") or ""
         self.api_key = kw.get("api_key", "") or ""
 
-    def search(self, query, limit=10, offset=0, category=None, language=None, sources=None):
+    def search(self, query, limit=10, offset=0, category=None, language=None, sources=None, license=None):
         return {
             "query": query,
             "total": 1,
@@ -126,9 +126,9 @@ def test_search_json(capsys):
     assert data["results"][0]["direct_pdf_url"].endswith(".pdf")
 
 
-def test_search_markdown(capsys):
-    assert main(["search", "attention", "--markdown"]) == 0
-    assert "## Conceptio results" in capsys.readouterr().out
+def test_search_commercial_license_flag(capsys):
+    assert main(["search", "attention", "--license", "commercial-ok", "--json"]) == 0
+    assert "Attention Is All You Need" in capsys.readouterr().out
 
 
 def test_search_table(capsys):

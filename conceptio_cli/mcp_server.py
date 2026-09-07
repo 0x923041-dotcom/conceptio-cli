@@ -50,6 +50,11 @@ TOOLS: List[Dict[str, Any]] = [
                                    "'Computer Science & Tech', 'Social Sciences & Humanities', "
                                    "'Arts & Culture', 'Law & Regulation'",
                 },
+                "license": {
+                    "type": "string",
+                    "enum": ["commercial-ok"],
+                    "description": "Optional rights filter requiring explicit commercial-use permission.",
+                },
             },
             "required": ["query"],
         },
@@ -211,10 +216,15 @@ def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Di
     if not (str(cfg.get("api_key") or "").strip() or str(cfg.get("license_key") or "").strip()):
         return {"content": _text(AUTH_REQUIRED_HINT), "isError": True}
     if name == "conceptio_search":
+        search_args = {
+            "limit": args.get("limit", 10),
+            "category": args.get("category"),
+        }
+        if args.get("license"):
+            search_args["license"] = args["license"]
         data = _with_attribution(client.search(
             args.get("query", ""),
-            limit=args.get("limit", 10),
-            category=args.get("category"),
+            **search_args,
         ))
         return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
 

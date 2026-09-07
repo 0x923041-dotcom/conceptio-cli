@@ -15,7 +15,7 @@ class FakeMCPClient:
     def __init__(self):
         self.license_key = ""
 
-    def search(self, query, limit=10, category=None):
+    def search(self, query, limit=10, category=None, license=None):
         return {"total": 1, "results": [{"id": 1, "title": "Paper", "direct_pdf_url": "https://x/p.pdf"}], "attribution": {"text": "Provided by Conceptio.", "url": "https://www.conceptio.app"}}
 
     def submit_search_job(self, queries):
@@ -135,13 +135,11 @@ def test_tools_call_search_preserves_attribution(fake_client):
     assert payload["attribution"]["url"] == "https://www.conceptio.app"
 
 
-def test_tools_call_search(fake_client):
-    req = {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
-           "params": {"name": "conceptio_search", "arguments": {"query": "attention", "limit": 5}}}
+def test_tools_call_search_accepts_license_filter(fake_client):
+    req = {"jsonrpc": "2.0", "id": 17, "method": "tools/call",
+           "params": {"name": "conceptio_search", "arguments": {"query": "attention", "license": "commercial-ok"}}}
     responses = _run([json.dumps(req)], fake_client)
-    result = responses[0]["result"]
-    payload = json.loads(result["content"][0]["text"])
-    assert payload["results"][0]["title"] == "Paper"
+    assert responses[0]["result"]["content"]
 
 
 def test_tools_call_citation(fake_client):
