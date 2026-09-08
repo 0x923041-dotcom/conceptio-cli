@@ -46,8 +46,12 @@ conceptio search "source:nist zero trust" --license commercial-ok
 conceptio search "source:eurlex AI act" --json
 conceptio search "meditations marcus aurelius" --markdown   # for Obsidian/Notion
 conceptio search "diffusion models" --offset 20            # paginate past the first page
-conceptio search --batch queries.json --json                  # queue 1–50 searches
-conceptio search-job <job-id> --json                          # poll once; repeat on your own cadence
+# Multi-query programmatic search — two modes:
+conceptio search --batch queries.json --json                # queue 1–50 searches, print the job handle
+conceptio search --batch queries.json --wait --json         # queue, then block until done and print results
+conceptio search --batch queries.json --sync --json         # run 1–10 immediately, no queue (one request)
+conceptio search-job <job-id> --json                        # poll once; repeat on your own cadence
+conceptio search-job <job-id> --wait --json                 # poll until done, then print results
 
 # Resolve a known identifier straight to its document(s)
 conceptio resolve "RFC 2119"
@@ -136,7 +140,7 @@ The `conceptio mcp` command starts a stdio JSON-RPC MCP server. It is dependency
 | Tool | Description |
 |------|-------------|
 | `conceptio_search` | Search the archive (`query`, optional `limit` 1–20, optional `category`). Returns structured results with titles, authors, years, source, snippet, and `direct_pdf_url` when available. |
-| `conceptio_search_batch` | Queue 1–50 independent searches and return an opaque job handle. Poll the handle with the API or `conceptio search-job`; the tool never starts an unbounded polling loop. |
+| `conceptio_search_batch` | Run multiple searches in one call — queue 1–50 as a background job and return an opaque handle (`sync` omitted/false), or set `sync: true` to run 1–10 immediately and return all results in one response. |
 | `conceptio_resolve` | Resolve a known identifier — RFC (`RFC 2119`), DOI (`doi:10.1145/3290605.3300333`), arXiv (`2604.08499`), PubMed ID (`PMID 41961061`), PubMed Central ID (`PMC10601397`), NIST/FIPS designation (`NIST FIPS 199`), W3C spec shortname (`w3c_digital-credentials`), or US legal citation / docket (`410 U.S. 113`, `20-5364`) — straight to its document(s). Unrecognised identifiers fall back to a text search. |
 | `conceptio_download_pdf` | Download the original open-access PDF for a Conceptio document ID or a direct PDF URL to a local path. |
 | `conceptio_get_citation` | Get a citation for a document ID in any of 11 formats (BibTeX, APA, MLA, Chicago, IEEE, Harvard, RIS, Bluebook, OSCOLA, ISO 690, ANSI Z39). |

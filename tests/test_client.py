@@ -296,6 +296,38 @@ def test_submit_search_job_rejects_more_than_fifty():
         client.submit_search_job([{"q": "x"}] * 51)
 
 
+def test_batch_search_posts_sync_batch_payload():
+    seen = {}
+
+    def handler(request):
+        seen["path"] = request.url.path
+        seen["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={"count": 1, "tier": "public", "queries": [{"total": 1, "results": []}]},
+            request=request,
+        )
+
+    client = _make_client(handler, api_key="ckey_live_abcdef0123456789abcdef0123456789")
+    data = client.batch_search([{"q": "zero trust", "limit": 5}])
+    assert seen["path"] == "/api/search/batch"
+    assert seen["payload"] == {"queries": [{"q": "zero trust", "limit": 5}]}
+    assert data["count"] == 1
+    assert data["tier"] == "public"
+
+
+def test_batch_search_rejects_more_than_ten():
+    client = ConceptioClient(api_base="https://conceptio.test")
+    with pytest.raises(ConceptioError, match="between 1 and 10"):
+        client.batch_search([{"q": "x"}] * 11)
+
+
+def test_batch_search_rejects_non_list():
+    client = ConceptioClient(api_base="https://conceptio.test")
+    with pytest.raises(ConceptioError, match="between 1 and 10"):
+        client.batch_search({"queries": [{"q": "x"}]})
+
+
 def test_get_search_job_rejects_untrusted_id():
     client = ConceptioClient(api_base="https://conceptio.test")
     with pytest.raises(ConceptioError, match="invalid format"):

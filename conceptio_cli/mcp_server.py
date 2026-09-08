@@ -121,7 +121,7 @@ TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "conceptio_search_batch",
-        "description": "Queue 1–50 independent searches for bounded background execution. Poll the returned job id with the public API or CLI; each fresh subquery uses one search credit.",
+        "description": "Run multiple independent searches in one call. Default: queue 1–50 for bounded background execution and return an opaque job handle (poll it with the public API or `conceptio search-job`). Set sync:true to run 1–10 immediately and return all results in one response — each fresh subquery uses one search credit either way.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -131,6 +131,11 @@ TOOLS: List[Dict[str, Any]] = [
                     "maxItems": 50,
                     "description": "Search objects with q and optional sources, category, language, sort, limit, and offset",
                     "items": {"type": "object"}
+                },
+                "sync": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Run synchronously (1–10 queries, results in one call) instead of queueing a job"
                 }
             },
             "required": ["queries"]
@@ -251,7 +256,12 @@ def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Di
             raise ConceptioError("queries must contain between 1 and 50 search objects.")
         if any(not isinstance(item, dict) or not str(item.get("q") or "").strip() for item in queries):
             raise ConceptioError("Every search object must contain a non-empty q field.")
-        data = client.submit_search_job(queries)
+        if args.get("sync"):
+            if len(queries) > 10:
+                raise ConceptioError("sync batches support at most 10 queries; drop sync to queue up to 50.")
+            data = client.batch_search(queries)
+        else:
+            data = client.submit_search_job(queries)
         return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
 
     if name == "conceptio_connectors_send":

@@ -270,6 +270,18 @@ class ConceptioClient:
             return {"error": "Empty search query.", "results": []}
         return self._get_json("/api/search", params)
 
+    def batch_search(self, queries: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Run 1–10 searches synchronously under one request-rate-limit decision.
+
+        Each subquery consumes a normal search credit and returns the exact
+        per-query response shape; the envelope is ``{count, tier, queries,
+        attribution}``. Use ``submit_search_job`` for up to 50 when you can
+        poll a handle instead of blocking.
+        """
+        if not isinstance(queries, list) or not 1 <= len(queries) <= 10:
+            raise ConceptioError("A synchronous batch needs between 1 and 10 query objects.")
+        return self._post_json("/api/search/batch", {"queries": queries})
+
     def submit_search_job(self, queries: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Queue 1–50 searches and return the opaque polling handle."""
         if not isinstance(queries, list) or not 1 <= len(queries) <= 50:

@@ -80,6 +80,19 @@ class FakeClient:
     def download_by_target(self, target, out):
         return out
 
+    def submit_search_job(self, queries):
+        return {"id": "job12345678", "status": "queued", "poll_url": "/api/search/jobs/job12345678"}
+
+    def get_search_job(self, job_id):
+        return {
+            "id": job_id, "status": "done",
+            "result": {"count": 1, "tier": "public", "queries": [self.search("attention")]},
+        }
+
+    def batch_search(self, queries):
+        return {"count": len(queries), "tier": "public",
+                "queries": [self.search(q.get("q") or "") for q in queries]}
+
     def send_zotero(self, doc_id):
         return {"idempotent": False, "doc_id": doc_id}
 
@@ -138,6 +151,49 @@ def test_search_table(capsys):
     assert "arXiv" in out
 
 
+def test_search_batch_sync_json(capsys, tmp_path):
+    queries = tmp_path / "q.json"
+    queries.write_text(json.dumps([{"q": "attention"}, {"q": "transformers"}]), encoding="utf-8")
+    assert main(["search", "--batch", str(queries), "--sync", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["count"] == 2
+    assert data["queries"][0]["total"] == 1
+
+
+def test_search_batch_sync_renders_each_query(capsys, tmp_path):
+    queries = tmp_path / "q.json"
+    queries.write_text(json.dumps([{"q": "attention"}, {"q": "transformers"}]), encoding="utf-8")
+    assert main(["search", "--batch", str(queries), "--sync"]) == 0
+    out = capsys.readouterr().out
+    assert "Query 1" in out and "Query 2" in out
+    assert out.count("Attention Is All You Need") == 2
+
+
+def test_search_batch_sync_rejects_over_ten(capsys, tmp_path):
+    queries = tmp_path / "q.json"
+    queries.write_text(json.dumps([{"q": "x"}] * 11), encoding="utf-8")
+    assert main(["search", "--batch", str(queries), "--sync"]) == 1
+    assert "at most 10" in capsys.readouterr().out
+
+
+def test_search_batch_queues_and_waits(capsys, tmp_path):
+    queries = tmp_path / "q.json"
+    queries.write_text(json.dumps([{"q": "attention"}]), encoding="utf-8")
+    assert main(["search", "--batch", str(queries), "--wait", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["count"] == 1
+    assert data["queries"][0]["total"] == 1
+
+
+def test_search_batch_queues_prints_handle_without_wait(capsys, tmp_path):
+    queries = tmp_path / "q.json"
+    queries.write_text(json.dumps([{"q": "attention"}]), encoding="utf-8")
+    assert main(["search", "--batch", str(queries), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "queued"
+    assert data["id"] == "job12345678"
+
+
 def test_resolve_rfc(capsys):
     assert main(["resolve", "RFC 2119"]) == 0
     out = capsys.readouterr().out
@@ -163,6 +219,12 @@ def test_resolve_text_fallback(capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "Unrecognized identifier" in out
     assert "No matching documents" in out
+
+
+def test_search_job_wait_renders_result(capsys):
+    assert main(["search-job", "job12345678", "--wait", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["count"] == 1
 
 
 def test_cite(capsys):

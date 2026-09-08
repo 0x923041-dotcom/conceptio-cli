@@ -21,6 +21,10 @@ class FakeMCPClient:
     def submit_search_job(self, queries):
         return {"id": "job12345678", "status": "queued", "poll_url": "/api/search/jobs/job12345678"}
 
+    def batch_search(self, queries):
+        return {"count": len(queries), "tier": "public",
+                "queries": [{"query": q.get("q"), "total": 1, "results": []} for q in queries]}
+
     def get_document(self, doc_id):
         return {"id": doc_id, "title": "Paper"}
 
@@ -108,6 +112,27 @@ def test_tools_call_search_batch(fake_client):
     payload = json.loads(responses[0]["result"]["content"][0]["text"])
     assert payload["status"] == "queued"
     assert payload["id"] == "job12345678"
+
+
+def test_tools_call_search_batch_sync(fake_client):
+    req = {"jsonrpc": "2.0", "id": 18, "method": "tools/call",
+           "params": {"name": "conceptio_search_batch",
+                      "arguments": {"queries": [{"q": "attention"}, {"q": "transformers"}], "sync": True}}}
+    responses = _run([json.dumps(req)], fake_client)
+    payload = json.loads(responses[0]["result"]["content"][0]["text"])
+    assert payload["count"] == 2
+    assert payload["queries"][0]["query"] == "attention"
+
+
+def test_tools_call_search_batch_sync_rejects_over_ten(fake_client):
+    req = {"jsonrpc": "2.0", "id": 19, "method": "tools/call",
+           "params": {"name": "conceptio_search_batch",
+                      "arguments": {"queries": [{"q": "x"}] * 11, "sync": True}}}
+    responses = _run([json.dumps(req)], fake_client)
+    # Tool validation errors surface as JSON-RPC errors (matching
+    # test_tool_error_returns_internal_error), never as unbounded polling.
+    assert responses[0]["error"]["code"] == -32603
+    assert "at most 10" in responses[0]["error"]["message"]
 
 
 def test_tools_call_connector_send(fake_client):

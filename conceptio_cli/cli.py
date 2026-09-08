@@ -13,6 +13,9 @@ from .formatter import console, print_document_info, print_search_results, to_ma
 
 CITE_FORMATS = ["bibtex", "apa", "mla", "chicago", "ieee", "harvard", "ris", "bluebook", "oscola", "iso690", "ansiz39"]
 
+_JOB_POLL_INTERVAL_S = 2.0
+_JOB_POLL_MAX_S = 300.0  # hard cap: a stuck job must not hang a terminal
+
 
 def _prepare_stdio() -> None:
     """Make stdout/stderr encoding-safe on legacy Windows consoles.
@@ -27,6 +30,46 @@ def _prepare_stdio() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError, OSError):
             pass
+
+
+def _poll_job(client: ConceptioClient, job_id: str, max_wait: float = _JOB_POLL_MAX_S) -> dict:
+    """Poll an asynchronous search job until done/expired/error or max_wait.
+
+    Returns the final snapshot dict (``get_search_job`` shape). Callers decide
+    how to render ``result``/``error``.
+    """
+    import time as _time
+
+    deadline = _time.monotonic() + max_wait
+    snapshot: dict = {}
+    while True:
+        snapshot = client.get_search_job(job_id)
+        status = snapshot.get("status") or ""
+        if snapshot.get("error") or status in ("done", "expired"):
+            return snapshot
+        console.print(f"[dim]Job {job_id}: {status}…[/]", end="\r")
+        _time.sleep(_JOB_POLL_INTERVAL_S)
+        if _time.monotonic() >= deadline:
+            return snapshot
+
+
+def _render_search_batch(data: dict, json_mode: bool, markdown: bool = False) -> None:
+    """Render a sync-batch or waited-job envelope ``{count, tier, queries}``."""
+    if json_mode:
+        print(json.dumps(data, indent=2))
+        return
+    queries = data.get("queries") or []
+    if not queries:
+        console.print("[yellow]No query results returned by the batch.[/]")
+        return
+    for i, item in enumerate(queries, 1):
+        q = item.get("query") or item.get("q") or f"query {i}"
+        if markdown:
+            console.print(f"\n## Query {i}: {q}")
+            print(to_markdown(item))
+        else:
+            console.print(f"\n[bold cyan]── Query {i}:[/] {q}")
+            print_search_results(item, query=q)
 
 
 def _default_output_name(target: str) -> str:
@@ -224,7 +267,9 @@ def main(argv: Optional[list] = None) -> int:
 
     sp = sub.add_parser("search", help="Search the archive (supports source:/lang:/category: directives)")
     sp.add_argument("query", nargs="?", help="Query, e.g. 'attention is all you need' or 'source:nist zero trust'")
-    sp.add_argument("--batch", metavar="QUERIES_JSON", help="Queue 1–50 query objects from a JSON file")
+    sp.add_argument("--batch", metavar="QUERIES_JSON", help="1–50 query objects from a JSON file (queued by default; --sync runs ≤10 immediately)")
+    sp.add_argument("--sync", action="store_true", help="With --batch: run queries through the synchronous batch endpoint (1–10)")
+    sp.add_argument("--wait", action="store_true", help="With --batch: block until the queued job completes, then print its results")
     sp.add_argument("-l", "--limit", type=int, default=None, help="Number of results (default: config, 10)")
     sp.add_argument("--offset", type=int, default=0, help="Pagination offset (default: 0)")
     sp.add_argument("-c", "--category", help="Filter by category (e.g. 'Computer Science & Tech')")
@@ -264,8 +309,9 @@ def main(argv: Optional[list] = None) -> int:
     sp.add_argument("--all-saved", action="store_true", help="Bulk-save document ids from --ids to Zotero (Pro only)")
     sp.add_argument("--ids", metavar="IDS_JSON", help="JSON list or {\"doc_ids\": [...]} for --all-saved")
 
-    sp = sub.add_parser("search-job", help="Poll an asynchronous search job once")
+    sp = sub.add_parser("search-job", help="Poll an asynchronous search job")
     sp.add_argument("job_id", help="Job id returned by `conceptio search --batch queries.json --json`")
+    sp.add_argument("--wait", action="store_true", help="Poll until the job completes, then print its results")
     sp.add_argument("--json", action="store_true", help="Output raw JSON")
 
     sub.add_parser("mcp", help="Start the stdio Model Context Protocol server for AI agents")
@@ -293,13 +339,37 @@ def main(argv: Optional[list] = None) -> int:
                     console.print("[bold red][ERR][/] Batch JSON must be a list or an object with a `queries` list.")
                     return 1
                 try:
+                    if args.sync:
+                        if len(queries) > 10:
+                            console.print("[bold red][ERR][/] --sync batches support at most 10 queries; drop --sync to queue up to 50.")
+                            return 1
+                        data = client.batch_search(queries)
+                        _render_search_batch(data, args.json, markdown=args.markdown)
+                        return 0
                     data = client.submit_search_job(queries)
+                    if data.get("error"):
+                        console.print(f"[bold red][ERR][/] {data['error']}")
+                        return 1
+                    if args.wait:
+                        try:
+                            final = _poll_job(client, data.get("id", ""))
+                        except ConceptioError as e:
+                            console.print(f"[bold red][ERR][/] {e}")
+                            return 1
+                        if final.get("error"):
+                            console.print(f"[bold red][ERR][/] {final['error']}")
+                            return 1
+                        if final.get("status") == "expired":
+                            console.print("[bold red][ERR][/] Search job expired before completion — submit it again.")
+                            return 1
+                        _render_search_batch(final.get("result") or {}, args.json, markdown=args.markdown)
+                        return 0
+                    print(json.dumps(data, indent=2) if args.json else
+                          f"Queued search job {data.get('id', '(unknown)')} — poll with `conceptio search-job {data.get('id', '')}`")
+                    return 0
                 except ConceptioError as e:
                     console.print(f"[bold red][ERR][/] {e}")
                     return 1
-                print(json.dumps(data, indent=2) if args.json else
-                      f"Queued search job {data.get('id', '(unknown)')} — poll with `conceptio search-job {data.get('id', '')}`")
-                return 0
             if not args.query:
                 console.print("[bold red][ERR][/] A query or --batch JSON file is required.")
                 return 1
@@ -425,10 +495,22 @@ def main(argv: Optional[list] = None) -> int:
             if not require_auth():
                 return 1
             try:
-                data = ConceptioClient().get_search_job(args.job_id)
+                if args.wait:
+                    data = _poll_job(ConceptioClient(), args.job_id)
+                else:
+                    data = ConceptioClient().get_search_job(args.job_id)
             except ConceptioError as e:
                 console.print(f"[bold red][ERR][/] {e}")
                 return 1
+            if args.wait:
+                if data.get("error"):
+                    console.print(f"[bold red][ERR][/] {data['error']}")
+                    return 1
+                if data.get("status") == "expired":
+                    console.print("[bold red][ERR][/] Search job expired before completion — submit it again.")
+                    return 1
+                _render_search_batch(data.get("result") or {}, args.json)
+                return 0
             if args.json:
                 print(json.dumps(data, indent=2))
             else:
