@@ -154,7 +154,7 @@ def test_search_429_returns_friendly_error():
     client = _make_client(_json_handler({}, status=429))
     data = client.search("anything")
     assert data["error"]
-    assert "Upgrade to Pro" in data["error"]
+    assert "Dev plan" in data["error"]
 
 
 def test_search_500_retries_then_raises():
@@ -480,15 +480,15 @@ def test_401_maps_to_auth_hint_loudly():
 def test_403_trial_exhausted_surfaces_server_detail():
     def handler(request):
         return httpx.Response(
-            403, json={"detail": "Free trial exhausted (200 lifetime searches) — upgrade to Pro (2,000 searches/week) for higher limits."},
+            403, json={"detail": "Your free API key cannot use programmatic endpoints — Conceptio for agents requires the Dev plan (EUR 19.99/month, 3,500 credits/month)."},
             request=request,
         )
 
     client = _make_client(handler)
     with pytest.raises(ConceptioError) as ei:
         client.search("moby dick")
-    assert "exhausted" in str(ei.value)
-    assert "upgrade to Pro" in str(ei.value)
+    assert "programmatic endpoints" in str(ei.value)
+    assert "Dev plan" in str(ei.value)
 
 
 def test_429_still_returns_error_dict():

@@ -29,7 +29,7 @@ conceptio auth ckey_live_...
 ```
 
 Get the key by signing in at [conceptio.app](https://conceptio.app) and
-creating one on your profile (Free, Pro, or Enterprise). The key is stored in
+creating one on your profile (Free, Dev, Pro, or Enterprise). The key is stored in
 `~/.conceptio/config.json` and sent as `X-Api-Key` with every request.
 `conceptio quota` reports your tier at any time. Every command below
 assumes this step is done — without a key the CLI refuses to run and tells

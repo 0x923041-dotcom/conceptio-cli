@@ -173,29 +173,34 @@ def handle_quota(client: ConceptioClient) -> int:
     if tier == "public":
         if isinstance(trial_remaining, int):
             if trial_remaining > 0:
-                console.print(f"  [cyan]Free plan: {trial_remaining} of 200 searches left[/] — "
-                              "your browser and agents share this allowance.")
+                console.print(f"  [cyan]Free plan: {trial_remaining} of 20 browser credits left[/] — "
+                              "your browser and agents share this allowance "
+                              "(free keys cannot call the API).")
             else:
-                console.print("  [yellow]Free plan: 200-search allowance used up — "
-                              "upgrade to Pro (2,000 searches/week) at conceptio.app.[/]")
+                console.print("  [yellow]Free plan: 20-credit allowance used up — "
+                              "Conceptio for agents requires the Dev plan "
+                              "(EUR 19.99/month, 3,500 credits/month) at conceptio.app.[/]")
         else:
             console.print("  [dim]Free plan — sign in on conceptio.app to mint an API key "
                           "for your agents (all searches share one allowance).[/]")
-    elif tier == "pro":
-        weekly_limit = data.get("weekly_search_limit")
-        weekly_used = data.get("weekly_search_used")
-        weekly_remaining = data.get("weekly_search_remaining")
-        reset_at = data.get("weekly_reset_at")
-        if weekly_limit is not None and weekly_used is not None:
+    elif tier in ("pro", "dev"):
+        # Monthly credits are the canonical period; the API still aliases the
+        # weekly fields for older clients, so fall back to them defensively.
+        limit = data.get("monthly_credit_limit") if data.get("monthly_credit_limit") is not None else data.get("weekly_search_limit")
+        used = data.get("monthly_credit_used") if data.get("monthly_credit_used") is not None else data.get("weekly_search_used")
+        remaining = data.get("monthly_credit_remaining") if data.get("monthly_credit_remaining") is not None else data.get("weekly_search_remaining")
+        reset_at = data.get("monthly_reset_at") or data.get("weekly_reset_at")
+        label = "Dev plan" if tier == "dev" else "Pro plan"
+        if limit is not None and used is not None:
             console.print(
-                f"  [green]Pro plan: {weekly_used} of {weekly_limit} weekly searches used[/] "
-                f"({weekly_remaining} remaining)."
+                f"  [green]{label}: {used} of {limit} monthly credits used[/] "
+                f"({remaining} remaining)."
             )
             if reset_at:
-                console.print(f"  [dim]Quota resets: {reset_at} (every Monday 00:00 UTC)[/]")
+                console.print(f"  [dim]Quota resets: {reset_at} (UTC calendar month)[/]")
             console.print("  [dim]Throughput: 60 req/min[/]")
         else:
-            console.print("  [green]Pro — 2,000 searches/week. Thank you for supporting the archive![/]")
+            console.print(f"  [green]{label} — thank you for supporting the archive![/]")
     elif tier in ("enterprise", "institutional"):
         console.print("  [green]Enterprise — unlimited searches via your organization.[/]")
     return 0

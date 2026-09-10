@@ -24,8 +24,9 @@ from .config import AUTH_REQUIRED_HINT, DEFAULT_API_BASE, load_config
 USER_AGENT = f"conceptio-cli/{__version__}"
 _MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 UPGRADE_HINT = (
-    "Rate limit / free trial quota exhausted. Upgrade to Pro at "
-    "https://conceptio.app (EUR 4.99/month) or run `conceptio auth <key>`."
+    "Rate limit or credit quota exhausted. Conceptio for agents requires the "
+    "Dev plan (EUR 19.99/month, 3,500 credits/month) — upgrade at "
+    "https://www.conceptio.app/pricing or run `conceptio auth <key>`."
 )
 
 _DIRECTIVE_RE = re.compile(
