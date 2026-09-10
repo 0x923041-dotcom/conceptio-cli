@@ -304,6 +304,40 @@ def test_info_json(capsys):
     assert data["title"] == "Paper"
 
 
+def test_search_error_dict_exits_nonzero(capsys, monkeypatch):
+    """A rate-limit/quota error dict must fail loudly — machine consumers
+    (editors, agent bridges) read the exit code, not just the payload."""
+    class QuotaClient(FakeClient):
+        def search(self, query, limit=10, offset=0, category=None, language=None, sources=None, license=None):
+            return {"error": "Rate limit: 1 request/second on the Dev tier", "results": []}
+
+    monkeypatch.setattr(cli_mod, "ConceptioClient", QuotaClient)
+    assert main(["search", "attention", "--json"]) == 1
+    assert "Rate limit" in capsys.readouterr().out
+
+
+def test_resolve_error_dict_exits_nonzero(capsys, monkeypatch):
+    class QuotaClient(FakeClient):
+        def resolve(self, identifier, limit=10):
+            return {"error": "Quota exhausted", "results": []}
+
+    monkeypatch.setattr(cli_mod, "ConceptioClient", QuotaClient)
+    assert main(["resolve", "RFC 2119"]) == 1
+    assert "Quota exhausted" in capsys.readouterr().out
+
+
+def test_sync_batch_error_dict_exits_nonzero(capsys, tmp_path, monkeypatch):
+    class QuotaClient(FakeClient):
+        def batch_search(self, queries):
+            return {"error": "Rate limit exceeded"}
+
+    monkeypatch.setattr(cli_mod, "ConceptioClient", QuotaClient)
+    queries = tmp_path / "q.json"
+    queries.write_text(json.dumps([{"q": "attention"}]), encoding="utf-8")
+    assert main(["search", "--batch", str(queries), "--sync", "--json"]) == 1
+    assert "Rate limit exceeded" in capsys.readouterr().out
+
+
 def test_quota(capsys):
     assert main(["quota"]) == 0
     assert "public" in capsys.readouterr().out.lower()

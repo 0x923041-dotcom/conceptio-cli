@@ -387,6 +387,9 @@ def main(argv: Optional[list] = None) -> int:
                             console.print("[bold red][ERR][/] --sync batches support at most 10 queries; drop --sync to queue up to 50.")
                             return 1
                         data = client.batch_search(queries)
+                        if data.get("error"):
+                            console.print(f"[bold red][ERR][/] {data['error']}")
+                            return 1
                         _render_search_batch(data, args.json, markdown=args.markdown)
                         return 0
                     data = client.submit_search_job(queries)
@@ -426,6 +429,12 @@ def main(argv: Optional[list] = None) -> int:
             if args.license:
                 search_kwargs["license"] = args.license
             data = client.search(args.query, **search_kwargs)
+            if data.get("error"):
+                # A rate-limit/quota error dict must fail loudly (exit 1) so
+                # machine consumers (editors, agent bridges) never mistake it
+                # for an empty result set.
+                console.print(f"[bold red][ERR][/] {data['error']}")
+                return 1
             if args.json:
                 print(json.dumps(data, indent=2))
             elif args.markdown:
@@ -442,6 +451,9 @@ def main(argv: Optional[list] = None) -> int:
                 data = client.resolve(args.id, limit=args.limit)
             except ConceptioError as e:
                 console.print(f"[bold red][ERR][/] {e}")
+                return 1
+            if data.get("error"):
+                console.print(f"[bold red][ERR][/] {data['error']}")
                 return 1
             if args.json:
                 print(json.dumps(data, indent=2))
