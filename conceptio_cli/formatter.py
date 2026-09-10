@@ -1,13 +1,18 @@
 """Terminal output formatting for the Conceptio CLI (rich)."""
 
 import re
+import sys
 from typing import Any, Dict, List, Optional
 
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-console = Console()
+# In --json mode the CLI is a machine contract: JSON goes to stdout and every
+# human message (errors, progress, hints) goes to stderr, so a caller can pipe
+# stdout straight into a JSON decoder. argv is fixed for the process, so this
+# is deterministic.
+console = Console(stderr="--json" in sys.argv)
 
 _HIGHLIGHT_WORDS = re.compile(r"[^\s,+\"'()]+")
 

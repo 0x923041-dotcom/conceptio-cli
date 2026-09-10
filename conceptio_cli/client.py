@@ -156,9 +156,14 @@ class ConceptioClient:
         api_key: Optional[str] = None,
     ):
         cfg = load_config()
-        self.api_base = _validate_api_base(api_base or cfg.get("api_base") or DEFAULT_API_BASE)
-        self.license_key = license_key or cfg.get("license_key") or ""
-        self.api_key = api_key or cfg.get("api_key") or ""
+        # Env vars win over the config file (they cannot be stored on disk by
+        # accident), so CI, editors, and other host processes can supply
+        # credentials without touching ~/.conceptio/config.json.
+        self.api_base = _validate_api_base(
+            api_base or os.environ.get("CONCEPTIO_API_BASE") or cfg.get("api_base") or DEFAULT_API_BASE
+        )
+        self.license_key = license_key or os.environ.get("CONCEPTIO_LICENSE_KEY") or cfg.get("license_key") or ""
+        self.api_key = api_key or os.environ.get("CONCEPTIO_API_KEY") or cfg.get("api_key") or ""
 
     def _headers(self) -> Dict[str, str]:
         # Exactly one credential is sent: an API key wins over a license key.
@@ -303,7 +308,10 @@ class ConceptioClient:
         return self._get_json("/api/resolve", {"id": str(identifier), "limit": max(1, min(int(limit), 50))})
 
     def get_document(self, doc_id: int) -> Dict[str, Any]:
-        return self._get_json(f"/api/document/{int(doc_id)}")
+        data = self._get_json(f"/api/document/{int(doc_id)}")
+        if data.get("error"):
+            raise ConceptioError(str(data["error"]))
+        return data
 
     def _post_json(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """POST JSON to a same-origin API endpoint without following redirects."""
@@ -407,6 +415,8 @@ class ConceptioClient:
 
     def get_citation(self, doc_id: int, format: str = "bibtex") -> str:
         data = self._get_json(f"/api/cite/{int(doc_id)}", {"format": format})
+        if data.get("error"):
+            raise ConceptioError(str(data["error"]))
         return str(data.get("citation", ""))
 
     def quota(self) -> Dict[str, Any]:

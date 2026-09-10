@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import sys
 import webbrowser
 from typing import Optional
@@ -212,15 +213,21 @@ def _is_api_key(key: str) -> bool:
 
 
 def require_auth() -> bool:
-    """Refuse keyless usage: every data command needs a stored credential.
+    """Refuse keyless usage: every data command needs a credential.
 
-    Returns True when an API key or license key is configured, else prints
-    how to authenticate and returns False. Deliberately client-side: the
-    public API tier still serves browsers; this gate keeps the CLI and MCP
-    server behind authentication.
+    Returns True when an API key or license key is configured (config file
+    or the CONCEPTIO_API_KEY / CONCEPTIO_LICENSE_KEY environment variables),
+    else prints how to authenticate and returns False. Deliberately
+    client-side: the public API tier still serves browsers; this gate keeps
+    the CLI and MCP server behind authentication.
     """
     cfg = load_config()
-    if str(cfg.get("api_key") or "").strip() or str(cfg.get("license_key") or "").strip():
+    if (
+        str(cfg.get("api_key") or "").strip()
+        or str(cfg.get("license_key") or "").strip()
+        or os.environ.get("CONCEPTIO_API_KEY", "").strip()
+        or os.environ.get("CONCEPTIO_LICENSE_KEY", "").strip()
+    ):
         return True
     console.print(f"[bold red][ERR][/] {AUTH_REQUIRED_HINT}")
     return False
@@ -302,6 +309,7 @@ def main(argv: Optional[list] = None) -> int:
 
     sp = sub.add_parser("info", help="View full metadata for a document")
     sp.add_argument("doc_id", type=int, help="Document ID")
+    sp.add_argument("--json", action="store_true", help="Output raw JSON (human text goes to stderr)")
 
     sp = sub.add_parser("auth", help="Save a Conceptio license key or API key")
     sp.add_argument("key", help="License key (CONCEPTIO-XXXX-XXXX-XXXX) or API key (ckey_live_...)")
@@ -459,7 +467,11 @@ def main(argv: Optional[list] = None) -> int:
             if not require_auth():
                 return 1
             try:
-                print_document_info(ConceptioClient().get_document(args.doc_id))
+                doc = ConceptioClient().get_document(args.doc_id)
+                if args.json:
+                    print(json.dumps(doc, indent=2))
+                else:
+                    print_document_info(doc)
             except ConceptioError as e:
                 console.print(f"[bold red][ERR][/] {e}")
                 return 1

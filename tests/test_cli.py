@@ -126,6 +126,21 @@ def _keyless(monkeypatch):
     )
 
 
+def test_require_auth_honors_env_api_key(monkeypatch):
+    # CONCEPTIO_API_KEY must satisfy the gate without touching the config
+    # file (editors/CI supply credentials via env).
+    _keyless(monkeypatch)
+    monkeypatch.setenv("CONCEPTIO_API_KEY", "ckey_live_envkey0123456789abcdef")
+    assert cli_mod.require_auth() is True
+
+
+def test_require_auth_refuses_without_any_credential(monkeypatch):
+    _keyless(monkeypatch)
+    monkeypatch.delenv("CONCEPTIO_API_KEY", raising=False)
+    monkeypatch.delenv("CONCEPTIO_LICENSE_KEY", raising=False)
+    assert cli_mod.require_auth() is False
+
+
 def test_no_command_prints_help(capsys):
     assert main([]) == 0
     out = capsys.readouterr().out
@@ -235,6 +250,16 @@ def test_cite(capsys):
 def test_info(capsys):
     assert main(["info", "1"]) == 0
     assert "Paper" in capsys.readouterr().out
+
+
+def test_info_json(capsys):
+    # Machine mode: `info --json` must emit pure JSON on stdout (editors and
+    # other host processes decode it directly), reserving human text for the
+    # non-json path.
+    assert main(["info", "1", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["id"] == 1
+    assert data["title"] == "Paper"
 
 
 def test_quota(capsys):

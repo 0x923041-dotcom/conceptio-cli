@@ -328,6 +328,24 @@ def test_batch_search_rejects_non_list():
         client.batch_search({"queries": [{"q": "x"}]})
 
 
+def test_env_vars_resolve_credentials(monkeypatch):
+    for name in ("CONCEPTIO_API_KEY", "CONCEPTIO_LICENSE_KEY", "CONCEPTIO_API_BASE"):
+        monkeypatch.delenv(name, raising=False)
+    client = ConceptioClient()
+    assert client.api_key == ""
+    assert client.license_key == ""
+    # No env, no explicit arg → the config file's api_base (fixture-isolated).
+    assert client.api_base == "https://conceptio.test"
+
+    monkeypatch.setenv("CONCEPTIO_API_KEY", "ckey_live_env")
+    monkeypatch.setenv("CONCEPTIO_LICENSE_KEY", "CONCEPTIO-ENV-KEY")
+    monkeypatch.setenv("CONCEPTIO_API_BASE", "https://env.example")
+    client = ConceptioClient()
+    assert client.api_key == "ckey_live_env"
+    assert client.license_key == "CONCEPTIO-ENV-KEY"
+    assert client.api_base == "https://env.example"
+
+
 def test_get_search_job_rejects_untrusted_id():
     client = ConceptioClient(api_base="https://conceptio.test")
     with pytest.raises(ConceptioError, match="invalid format"):
@@ -343,6 +361,25 @@ def test_get_document_and_citation():
 
     client = _make_client(_json_handler({"citation": "@misc{...}"}))
     assert client.get_citation(42, format="bibtex") == "@misc{...}"
+
+
+def test_get_citation_raises_on_error_dict(monkeypatch):
+    # A 429/403 surfaces the server's own detail as an exception so machine
+    # callers never swallow it into an empty string (the old behaviour left
+    # `conceptio cite` printing a blank line on a rate-limited request).
+    detail = "Rate limit: 1 request/second on the Dev tier"
+    client = _make_client(_json_handler({"detail": detail}, status=429))
+    with pytest.raises(ConceptioError) as ei:
+        client.get_citation(42)
+    assert detail in str(ei.value)
+
+
+def test_get_document_raises_on_error_dict(monkeypatch):
+    detail = "Your free API key cannot use programmatic endpoints"
+    client = _make_client(_json_handler({"detail": detail}, status=403))
+    with pytest.raises(ConceptioError) as ei:
+        client.get_document(42)
+    assert detail in str(ei.value)
 
 
 # ── download resolution + streaming ───────────────────────────────────────────
