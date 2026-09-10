@@ -229,6 +229,76 @@ def test_noarg_constructor_reads_api_key_from_config(_isolate_config, monkeypatc
     assert "x-license-key" not in seen["headers"]
 
 
+def test_bearer_token_wins_over_machine_keys():
+    """A signed-in human session (bearer) is exactly-one-credential — it
+    wins over any machine key, and no key header is ever sent alongside it."""
+    seen = {}
+
+    def handler(request):
+        seen["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"total": 0, "results": []}, request=request)
+
+    _CURRENT_HANDLER["fn"] = handler
+    client = ConceptioClient(
+        api_key="ckey_live_abcdef0123456789abcdef0123456789",
+        license_key="CONCEPTIO-TEST-1234",
+        bearer_token="idtoken-abc",
+    )
+    client.search("hello")
+    assert seen["headers"].get("authorization") == "Bearer idtoken-abc"
+    assert "x-api-key" not in seen["headers"]
+    assert "x-license-key" not in seen["headers"]
+
+
+def test_bearer_token_resolves_from_env(monkeypatch):
+    for name in ("CONCEPTIO_API_KEY", "CONCEPTIO_LICENSE_KEY", "CONCEPTIO_BEARER_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CONCEPTIO_BEARER_TOKEN", "idtoken-env")
+    client = ConceptioClient()
+    assert client.bearer_token == "idtoken-env"
+    assert client.api_key == ""
+
+
+def test_proof_fetches_bundle():
+    bundle = {
+        "doc_id": 42,
+        "content_hash": "ab" * 32,
+        "source": "nist",
+        "license": "Open Access",
+        "retrieved_at": "2026-09-10T00:00:00Z",
+    }
+    seen = {}
+
+    def handler(request):
+        seen["path"] = request.url.path
+        return httpx.Response(200, json=bundle, request=request)
+
+    client = _make_client(handler, api_key="ckey_live_abcdef0123456789abcdef0123456789")
+    data = client.get_proof(42)
+    assert seen["path"] == "/api/document/42/proof"
+    assert data["content_hash"] == "ab" * 32
+
+
+def test_proof_passes_passage_query():
+    seen = {}
+
+    def handler(request):
+        seen["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"doc_id": 42, "snippet": "matched"}, request=request)
+
+    client = _make_client(handler, api_key="ckey_live_abcdef0123456789abcdef0123456789")
+    client.get_proof(42, query="quantum")
+    assert seen["params"].get("q") == "quantum"
+
+
+def test_proof_raises_on_error_dict():
+    detail = "Your free API key cannot use programmatic endpoints"
+    client = _make_client(_json_handler({"detail": detail}, status=403))
+    with pytest.raises(ConceptioError) as ei:
+        client.get_proof(42)
+    assert detail in str(ei.value)
+
+
 def test_api_key_wins_over_license_key():
     """A client configured with both sends exactly one credential — the API
     key (belt-and-suspenders: set_api_key clears the license key, this pins
@@ -329,20 +399,23 @@ def test_batch_search_rejects_non_list():
 
 
 def test_env_vars_resolve_credentials(monkeypatch):
-    for name in ("CONCEPTIO_API_KEY", "CONCEPTIO_LICENSE_KEY", "CONCEPTIO_API_BASE"):
+    for name in ("CONCEPTIO_API_KEY", "CONCEPTIO_LICENSE_KEY", "CONCEPTIO_API_BASE", "CONCEPTIO_BEARER_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     client = ConceptioClient()
     assert client.api_key == ""
     assert client.license_key == ""
+    assert client.bearer_token == ""
     # No env, no explicit arg → the config file's api_base (fixture-isolated).
     assert client.api_base == "https://conceptio.test"
 
     monkeypatch.setenv("CONCEPTIO_API_KEY", "ckey_live_env")
     monkeypatch.setenv("CONCEPTIO_LICENSE_KEY", "CONCEPTIO-ENV-KEY")
     monkeypatch.setenv("CONCEPTIO_API_BASE", "https://env.example")
+    monkeypatch.setenv("CONCEPTIO_BEARER_TOKEN", "idtoken-env")
     client = ConceptioClient()
     assert client.api_key == "ckey_live_env"
     assert client.license_key == "CONCEPTIO-ENV-KEY"
+    assert client.bearer_token == "idtoken-env"
     assert client.api_base == "https://env.example"
 
 

@@ -83,6 +83,28 @@ def _default_output_name(target: str) -> str:
     return tail
 
 
+def _print_proof_summary(data: dict, doc_id: int) -> None:
+    """Render the proof bundle's key fields for a human reader."""
+    console.print(f"[bold]Proof bundle:[/] [cyan]document {doc_id}[/]")
+    source = data.get("source") or "—"
+    source_label = data.get("source_label") or source
+    license = data.get("license") or "—"
+    content_hash = data.get("content_hash") or "—"
+    authority = data.get("authority_score", data.get("authority"))
+    retrieved = data.get("retrieved_at") or data.get("retrieved") or "—"
+    version = data.get("version_status") or data.get("version") or ""
+    console.print(f"  [dim]Source[/]     {source_label}")
+    console.print(f"  [dim]License[/]    {license}")
+    console.print(f"  [dim]SHA-256[/]    {content_hash}")
+    console.print(f"  [dim]Authority[/]  {authority if authority is not None else '—'}")
+    console.print(f"  [dim]Retrieved[/]  {retrieved}")
+    if version:
+        console.print(f"  [dim]Version[/]    {version}")
+    snippet = data.get("snippet") or data.get("matched_snippet") or ""
+    if snippet:
+        console.print(f"  [dim]Snippet[/]    {snippet}")
+
+
 def handle_download(client: ConceptioClient, target: str, output: Optional[str]) -> int:
     out = output or _default_output_name(target)
     try:
@@ -225,8 +247,10 @@ def require_auth() -> bool:
     if (
         str(cfg.get("api_key") or "").strip()
         or str(cfg.get("license_key") or "").strip()
+        or str(cfg.get("bearer_token") or "").strip()
         or os.environ.get("CONCEPTIO_API_KEY", "").strip()
         or os.environ.get("CONCEPTIO_LICENSE_KEY", "").strip()
+        or os.environ.get("CONCEPTIO_BEARER_TOKEN", "").strip()
     ):
         return True
     console.print(f"[bold red][ERR][/] {AUTH_REQUIRED_HINT}")
@@ -309,6 +333,11 @@ def main(argv: Optional[list] = None) -> int:
 
     sp = sub.add_parser("info", help="View full metadata for a document")
     sp.add_argument("doc_id", type=int, help="Document ID")
+    sp.add_argument("--json", action="store_true", help="Output raw JSON (human text goes to stderr)")
+
+    sp = sub.add_parser("proof", help="Fetch the machine-readable evidence bundle for a document")
+    sp.add_argument("doc_id", type=int, help="Document ID")
+    sp.add_argument("-q", "--query", default="", help="Passage-level proof: matched snippet plus surrounding context")
     sp.add_argument("--json", action="store_true", help="Output raw JSON (human text goes to stderr)")
 
     sp = sub.add_parser("auth", help="Save a Conceptio license key or API key")
@@ -472,6 +501,20 @@ def main(argv: Optional[list] = None) -> int:
                     print(json.dumps(doc, indent=2))
                 else:
                     print_document_info(doc)
+            except ConceptioError as e:
+                console.print(f"[bold red][ERR][/] {e}")
+                return 1
+            return 0
+
+        if args.command == "proof":
+            if not require_auth():
+                return 1
+            try:
+                proof = ConceptioClient().get_proof(args.doc_id, query=args.query or None)
+                if args.json:
+                    print(json.dumps(proof, indent=2))
+                else:
+                    _print_proof_summary(proof, args.doc_id)
             except ConceptioError as e:
                 console.print(f"[bold red][ERR][/] {e}")
                 return 1

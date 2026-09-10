@@ -154,6 +154,7 @@ class ConceptioClient:
         api_base: Optional[str] = None,
         license_key: Optional[str] = None,
         api_key: Optional[str] = None,
+        bearer_token: Optional[str] = None,
     ):
         cfg = load_config()
         # Env vars win over the config file (they cannot be stored on disk by
@@ -164,13 +165,20 @@ class ConceptioClient:
         )
         self.license_key = license_key or os.environ.get("CONCEPTIO_LICENSE_KEY") or cfg.get("license_key") or ""
         self.api_key = api_key or os.environ.get("CONCEPTIO_API_KEY") or cfg.get("api_key") or ""
+        # Signed-in human session (Firebase ID token, same credential the web
+        # app uses). Env-only for now: bearer tokens expire quickly, so they
+        # are handed to the CLI per-run by host processes rather than stored.
+        self.bearer_token = bearer_token or os.environ.get("CONCEPTIO_BEARER_TOKEN") or cfg.get("bearer_token") or ""
 
     def _headers(self) -> Dict[str, str]:
-        # Exactly one credential is sent: an API key wins over a license key.
+        # Exactly one credential is sent: a signed-in human session wins over
+        # a machine key (never send both); an API key wins over a license key
         # (set_api_key clears the license key; this is a belt-and-suspenders
-        # guard for a config edited by hand.)
+        # guard for a config edited by hand).
         headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
-        if self.api_key:
+        if self.bearer_token:
+            headers["Authorization"] = f"Bearer {self.bearer_token}"
+        elif self.api_key:
             headers["X-Api-Key"] = self.api_key
         elif self.license_key:
             headers["X-License-Key"] = self.license_key
@@ -309,6 +317,24 @@ class ConceptioClient:
 
     def get_document(self, doc_id: int) -> Dict[str, Any]:
         data = self._get_json(f"/api/document/{int(doc_id)}")
+        if data.get("error"):
+            raise ConceptioError(str(data["error"]))
+        return data
+
+    def get_proof(self, doc_id: int, query: Optional[str] = None) -> Dict[str, Any]:
+        """Fetch the machine-readable evidence bundle for one document.
+
+        Optional ``query`` yields a passage-level proof: the matched snippet
+        plus its surrounding context from the served full text. The bundle
+        carries ``content_hash``, source, license, retrieval options, and
+        citation data — enough for a consumer to verify and re-cite.
+        """
+        if int(doc_id) < 1:
+            raise ConceptioError("Document id must be a positive integer.")
+        params: Dict[str, Any] = {}
+        if query:
+            params["q"] = str(query)
+        data = self._get_json(f"/api/document/{int(doc_id)}/proof", params or None)
         if data.get("error"):
             raise ConceptioError(str(data["error"]))
         return data

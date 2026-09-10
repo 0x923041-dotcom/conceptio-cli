@@ -18,6 +18,7 @@ DEFAULT_CONFIG = {
     "api_base": DEFAULT_API_BASE,
     "license_key": "",
     "api_key": "",
+    "bearer_token": "",
     "default_limit": 10,
     "default_citation_format": "bibtex",
 }

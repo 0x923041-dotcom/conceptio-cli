@@ -76,6 +76,8 @@ conceptio cite 7288 --format iso690
 
 # Document metadata
 conceptio info 2844
+conceptio proof 2844                # machine-readable evidence bundle
+conceptio proof 2844 -q "quantum"   # passage-level proof for a phrase
 
 # License key (Pro) or API key + quota
 conceptio auth CONCEPTIO-XXXX-XXXX-XXXX   # Pro license (one-time, account-bound)
@@ -257,6 +259,14 @@ limit responses to 100 MiB, and write atomically. The MCP server additionally
 keeps `output_path` beneath its current workspace and rejects traversal or
 symlink escapes. Set `default_limit` to change the search page size; set
 `default_citation_format` to any of the 11 supported format names.
+
+Host processes (editors, CI, agent runtimes) can supply credentials without
+writing to the config file — environment variables win over saved values:
+`CONCEPTIO_API_KEY`, `CONCEPTIO_LICENSE_KEY`, and `CONCEPTIO_API_BASE`. A
+signed-in human session can also be passed per-run as
+`CONCEPTIO_BEARER_TOKEN` (the same short-lived bearer token the web app uses);
+it takes precedence over a machine key, and exactly one credential is ever
+sent.
 
 ---
 

@@ -38,6 +38,18 @@ class FakeClient:
     def get_document(self, doc_id):
         return {"id": doc_id, "title": "Paper", "direct_pdf_url": "https://x/a.pdf"}
 
+    def get_proof(self, doc_id, query=None):
+        return {
+            "doc_id": doc_id,
+            "content_hash": "ab" * 32,
+            "source": "nist",
+            "source_label": "NIST",
+            "license": "Open Access",
+            "authority_score": 0.9,
+            "retrieved_at": "2026-09-10T00:00:00Z",
+            "snippet": "matched passage" if query else None,
+        }
+
     def get_citation(self, doc_id, format="bibtex"):
         return f"@misc{{key, title = Paper, year = n.d.}}"
 
@@ -252,6 +264,36 @@ def test_info(capsys):
     assert "Paper" in capsys.readouterr().out
 
 
+def test_proof_json(capsys):
+    assert main(["proof", "1", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["doc_id"] == 1
+    assert data["content_hash"] == "ab" * 32
+
+
+def test_proof_human_summary(capsys):
+    assert main(["proof", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "Proof bundle" in out
+    assert "NIST" in out
+    assert "Open Access" in out
+
+
+def test_proof_passes_passage_query(capsys):
+    assert main(["proof", "1", "-q", "quantum"]) == 0
+    assert "matched passage" in capsys.readouterr().out
+
+
+def test_proof_raises_on_error_body(capsys, monkeypatch):
+    class FailingClient(FakeClient):
+        def get_proof(self, doc_id, query=None):
+            raise cli_mod.ConceptioError("Rate limit: 1 request/second on the Dev tier")
+
+    monkeypatch.setattr(cli_mod, "ConceptioClient", FailingClient)
+    assert main(["proof", "1", "--json"]) == 1
+    assert "Rate limit" in capsys.readouterr().out
+
+
 def test_info_json(capsys):
     # Machine mode: `info --json` must emit pure JSON on stdout (editors and
     # other host processes decode it directly), reserving human text for the
@@ -367,6 +409,7 @@ def test_version(capsys):
     ["download", "1", "-o", "a.pdf"],
     ["cite", "1"],
     ["info", "1"],
+    ["proof", "1"],
 ])
 def test_data_commands_require_auth(capsys, monkeypatch, argv):
     """Keyless runs refuse before any network call, with setup guidance."""
