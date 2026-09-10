@@ -242,8 +242,9 @@ def handle_auth(key: str) -> int:
             console.print(f"[bold green][OK][/] Key accepted - tier: [cyan]{tier}[/]")
             tr = data.get("trial_remaining")
             if tier == "public" and isinstance(tr, int):
-                console.print(f"[dim]Free plan: {tr} of 200 searches remaining — agents share the "
-                              "account allowance with the web app.[/]")
+                console.print(f"[dim]Free plan: {tr} of 20 browser credits remaining — free keys "
+                              "cannot call the API; agents require the Dev plan "
+                              "(https://www.conceptio.app/pricing).[/]")
         else:
             console.print("[yellow]Key saved but the API still reports the free tier — "
                           "double-check the key (run `conceptio quota` to re-check).[/]")

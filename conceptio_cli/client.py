@@ -213,8 +213,9 @@ class ConceptioClient:
                     detail = _server_detail(resp)
                     raise ConceptioError(detail or "Search job expired — submit a new job to run these queries again.")
                 if resp.status_code == 403:
-                    # 403 on the free plan: the account's 200-search allowance
-                    # is spent (the web app and your agents share one balance).
+                    # 403 = the Dev-gate: a free (public-tier) API key cannot
+                    # spend programmatic surfaces (2026-09-10). Surface the
+                    # server's own upgrade hint verbatim.
                     raise ConceptioError(_server_detail(resp) or UPGRADE_HINT)
                 resp.raise_for_status()
                 data = resp.json()
