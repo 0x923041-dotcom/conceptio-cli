@@ -3,6 +3,45 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## 0.3.3
+
+### Added
+
+- **`tests/live_prod_check.py` — the published CLI against the real API.**
+  `live_check.py` pins behaviour against a loopback stub we control, so nothing
+  in this repo could notice the *live* API moving underneath it: a renamed field
+  in `/api/me`, a refusal message that changes wording, an edge rule that starts
+  rejecting the CLI's transport. Those ship silently — the suite stays green
+  while every real user sees the drift. The new harness runs the real binary
+  against `https://www.conceptio.app` and covers the reads the API keeps open
+  without a credential (`/api/me`), the credential paths (the local keyless
+  refusal, and an unknown key being refused as *authentication* rather than as
+  quota), and every data command's refusal shape (`search`, `info`, `cite`,
+  `proof`), asserting on exit codes and on the absence of a traceback or a raw
+  server body.
+
+  It is opt-in (`--yes`) because it touches production, and it is safe by
+  construction rather than by discipline: it refuses to run unless the base is
+  the shipped default (otherwise it would report "production verified" from a
+  stub), the credential is a literal placeholder that any inherited
+  `CONCEPTIO_*` variable is stripped out in favour of, and no search ever
+  executes. Removing the guard or re-pointing the default base turns 6 of its 9
+  checks red, which is the only evidence that a check is load-bearing.
+
+### Fixed
+
+- **A 403 with no readable body was reported as a rate limit, and as a plan
+  problem.** `_get_json` fell back to `UPGRADE_HINT` ("Rate limit or credit
+  quota exhausted … upgrade at …/pricing") whenever a 403 carried no
+  API-readable `detail`. A 403 is not a rate limit, and the API *always*
+  explains a Dev-gate refusal in its own JSON — so the one case that reached
+  this fallback was a refusal that came from somewhere else entirely: an edge
+  firewall, a corporate proxy, a captive portal. That user was told to buy a
+  plan that no measurement supported. `FORBIDDEN_HINT` now names both causes and
+  points at `conceptio quota`, the one tier read that stays open when a request
+  is refused. A 403 that *does* carry the API's own detail is still surfaced
+  verbatim, which is the Dev-funnel copy.
+
 ## 0.3.2
 
 ### Added

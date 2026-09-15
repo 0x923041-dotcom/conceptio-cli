@@ -91,7 +91,7 @@ def test_no_legacy_domain_in_public_strings():
 
     from conceptio_cli.config import DEFAULT_API_BASE
 
-    candidates = [DEFAULT_API_BASE, client_mod.UPGRADE_HINT]
+    candidates = [DEFAULT_API_BASE, client_mod.UPGRADE_HINT, client_mod.FORBIDDEN_HINT]
     hosts = set()
     for text in candidates:
         hosts.update(re.findall(r"https?://([^/\s)'\"]+)", text))
@@ -585,6 +585,36 @@ def test_401_maps_to_auth_hint_loudly():
         client.search("moby dick")
     assert "conceptio auth" in str(ei.value)
     assert str(ei.value) == AUTH_REQUIRED_HINT
+
+
+def test_403_without_a_readable_body_claims_neither_rate_limit_nor_plan():
+    """An unreadable 403 is not a rate limit, and not provably a tier problem.
+
+    The API always explains a Dev-gate refusal in its own JSON, so a 403 we
+    cannot parse arrived from something in front of it (an edge firewall, a
+    proxy, a captive portal). The fallback used to be UPGRADE_HINT — a rate
+    limit/quota message — so the one user who could not have been rate limited
+    (a 403 was returned, not a 429) was told to buy a plan.
+    """
+
+    def handler(request):
+        # What a WAF/edge block actually returns: HTML, not the API's JSON.
+        return httpx.Response(
+            403,
+            text="<html><body>Access denied</body></html>",
+            headers={"content-type": "text/html"},
+            request=request,
+        )
+
+    client = _make_client(handler)
+    with pytest.raises(ConceptioError) as ei:
+        client.search("moby dick")
+    msg = str(ei.value)
+    assert "403" in msg
+    assert "quota" in msg, "the one read that still works when refused must be named"
+    assert "rate limit" not in msg.lower()
+    assert "credit" not in msg.lower()
+    assert "firewall" in msg.lower() or "proxy" in msg.lower()
 
 
 def test_403_trial_exhausted_surfaces_server_detail():

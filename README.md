@@ -289,8 +289,9 @@ sent.
 
 ```bash
 pip install -e ".[test]"     # or: pip install -e . && pip install pytest
-pytest tests/                # offline tests (mocked HTTP, no network)
-python tests/live_check.py   # live: the real CLI against a loopback stub
+pytest tests/                      # offline tests (mocked HTTP, no network)
+python tests/live_check.py         # live: the real CLI against a loopback stub
+python tests/live_prod_check.py --yes   # smoke: the real CLI against the real API
 ```
 
 The offline suite patches `httpx` with a `MockTransport` and stubs
@@ -317,6 +318,21 @@ CLI is given a throwaway config directory so your real
 the binary, `CONCEPTIO_STUB` the stub, `CONCEPTIO_LIVE_VERBOSE=1` echoes each
 command's output. It exits nonzero and prints every failing check with the
 command's own output.
+
+`tests/live_prod_check.py` is that harness's deliberate opposite, and closing
+the pair is the point. Everything above is pinned against a server we control,
+so none of it can see the *live* API moving — a renamed field in `/api/me`, a
+refusal that changes wording, an edge rule that starts rejecting the CLI's
+transport. Those ship silently, because this repo's own suite stays green while
+every real user sees the drift.
+
+It is opt-in (`--yes`) and safe by construction rather than by discipline: it
+refuses to run unless the base is the shipped default, the credential is a
+placeholder that any inherited `CONCEPTIO_*` variable is stripped out in favour
+of, and it only runs reads the API keeps open without a credential plus commands
+whose expected outcome is a refusal — no search ever executes. `rm -f` the
+guard and it stops being able to tell production from a stub; re-point the
+default base and 6 of its 9 checks go red, which is how you know they bite.
 
 ### The client contract
 

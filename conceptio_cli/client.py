@@ -28,6 +28,23 @@ UPGRADE_HINT = (
     "Dev plan (EUR 19.99/month, 3,500 credits/month) — upgrade at "
     "https://www.conceptio.app/pricing or run `conceptio auth <key>`."
 )
+# A 403 whose body we cannot read must not be reported as a plan problem. The
+# API always explains a Dev-gate refusal in its own JSON (`DEV_GATE_DETAIL`, a
+# real string a machine can print), so an unparseable 403 came from something in
+# front of it — an edge firewall, a corporate proxy, a captive portal — or from a
+# refusal whose copy has not reached us. This used to fall back to UPGRADE_HINT,
+# which names a *rate limit*: a 403 is not a rate limit, and the user it reached
+# was told to buy a plan neither measurement supported. Name both causes, and
+# point at `conceptio quota` — the one tier read that stays open when a request
+# is refused.
+FORBIDDEN_HINT = (
+    "The API refused the request (HTTP 403) without explaining why. If your key "
+    "is on the free (public) tier, programmatic endpoints need the Dev plan — "
+    "run `conceptio quota` to see the tier it actually honored, and upgrade at "
+    "https://www.conceptio.app/pricing. If the tier is already Dev or above, "
+    "something between you and the API is filtering the request (a firewall, "
+    "VPN, or proxy) rather than your plan."
+)
 
 _DIRECTIVE_RE = re.compile(
     r"\b(source|src|language|lang|category|cat)\s*:\s*(\"[^\"]+\"|'[^']+'|[^\s]+)",
@@ -270,8 +287,10 @@ class ConceptioClient:
                 if resp.status_code == 403:
                     # 403 = the Dev-gate: a free (public-tier) API key cannot
                     # spend programmatic surfaces (2026-09-10). Surface the
-                    # server's own upgrade hint verbatim.
-                    raise ConceptioError(_server_detail(resp) or UPGRADE_HINT)
+                    # server's own upgrade hint verbatim; when it is absent the
+                    # refusal did not come from this API, so FORBIDDEN_HINT names
+                    # both causes instead of inventing one.
+                    raise ConceptioError(_server_detail(resp) or FORBIDDEN_HINT)
                 resp.raise_for_status()
                 data = resp.json()
                 if not isinstance(data, dict):
