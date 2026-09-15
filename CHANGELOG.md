@@ -3,6 +3,47 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## 0.3.2
+
+### Added
+
+- **`tests/client_contract.py` — the argv grammar the five clients depend on,
+  written down and tested.** The Neovim, VS Code, Obsidian, Raycast and Alfred
+  clients all exec this binary with an argument list and read stdout; nothing
+  type-checks that list, and no client's suite can see this repo, so a renamed
+  subcommand passes both suites and ships broken. Every distinct invocation is
+  recorded with the file it came from, `cli.build_parser()` exposes the grammar
+  so the offline suite can parse each one, and `live_check.py` runs the same
+  rows against a real binary. A client that is not checked out is a *skip*, not
+  a pass.
+- **`conceptio_cli.cli.build_parser()`** — the grammar, built separately from
+  `main()` so it can be introspected. Behaviour is unchanged.
+- **`tests/live_check.py` grew from 19 checks to 44.** The harness now covers
+  the half of the surface it never touched: `resolve`, `cite` (all formats plus
+  a locally-refused one), `info`, `proof` (including `-q`), `search` filters and
+  directives as they appear in the request, `--markdown`, the credential paths
+  (`auth` writing a config file, a saved key with no environment key, a keyless
+  refusal, and where `quota` says the key lives), the download boundary
+  (loopback refused, no link reported), the connector failure reasons, all
+  eight MCP tools, and each client's own argv. It also asserts that the binary
+  it is driving is this working tree — see Fixed.
+
+### Fixed
+
+- **`quota` claimed an environment key was "saved in `~/.conceptio/config.json`".**
+  Supplying the credential by `CONCEPTIO_API_KEY` is the documented path for an
+  editor, an MCP host or CI — the one case where no config file exists — and
+  the sentence was printed anyway. The client now records where the effective
+  credential came from (argument, environment, or config file), and the hint
+  reports that instead of guessing. A saved key still says "saved".
+- **`info` and `cite` accepted a document id below 1.** `proof` refused it while
+  `info 0` and `cite 0` asked the API for document 0 and rendered whatever came
+  back. One predicate now validates the id in every method that takes one, so
+  the CLI and the MCP tools agree.
+- **`proof`'s SHA-256 row folded onto a second, unindented line** in a default
+  80-column terminal — the one line a reader copies out of the bundle arrived
+  split in two. It overflows instead of wrapping.
+
 ## 0.3.1
 
 ### Added

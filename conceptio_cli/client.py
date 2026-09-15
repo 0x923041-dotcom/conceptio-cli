@@ -60,6 +60,23 @@ class ConceptioError(Exception):
     """Friendly error surfaced to CLI/MCP users."""
 
 
+def _positive_doc_id(value: Any) -> int:
+    """Validate a document id the same way everywhere it is accepted.
+
+    `proof` required a positive id while `info` and `cite` passed whatever came
+    in straight to the API, so `conceptio info 0` asked the server for document
+    0 and rendered whatever it answered. One predicate, called by every method
+    that takes an id, keeps the CLI and the MCP tools in agreement.
+    """
+    try:
+        doc_id = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ConceptioError("Document id must be a positive integer.") from exc
+    if doc_id < 1:
+        raise ConceptioError("Document id must be a positive integer.")
+    return doc_id
+
+
 def _same_origin(left: str, right: str) -> bool:
     """Return whether two URLs have the same scheme and network location."""
     a, b = urlsplit(left), urlsplit(right)
@@ -169,6 +186,30 @@ class ConceptioClient:
         # app uses). Env-only for now: bearer tokens expire quickly, so they
         # are handed to the CLI per-run by host processes rather than stored.
         self.bearer_token = bearer_token or os.environ.get("CONCEPTIO_BEARER_TOKEN") or cfg.get("bearer_token") or ""
+        # Where the *effective* credential came from — an argument, an
+        # environment variable, or the config file. `quota` used to state
+        # unconditionally that the key was "saved in ~/.conceptio/config.json",
+        # which is false for the documented host-process path (an editor or CI
+        # exporting CONCEPTIO_API_KEY, where no file is ever written). Precedence
+        # here mirrors `_headers` exactly, so the sentence and the request
+        # cannot describe different credentials.
+        self.credential_origin = ""
+        self.credential_env_var = ""
+        for value, explicit, env_name, cfg_key in (
+            (self.bearer_token, bearer_token, "CONCEPTIO_BEARER_TOKEN", "bearer_token"),
+            (self.api_key, api_key, "CONCEPTIO_API_KEY", "api_key"),
+            (self.license_key, license_key, "CONCEPTIO_LICENSE_KEY", "license_key"),
+        ):
+            if not str(value or "").strip():
+                continue
+            if str(explicit or "").strip():
+                self.credential_origin = "argument"
+            elif str(os.environ.get(env_name) or "").strip():
+                self.credential_origin = "environment"
+                self.credential_env_var = env_name
+            elif str(cfg.get(cfg_key) or "").strip():
+                self.credential_origin = "config file"
+            break
 
     def _headers(self) -> Dict[str, str]:
         # Exactly one credential is sent: a signed-in human session wins over
@@ -316,7 +357,7 @@ class ConceptioClient:
         return self._get_json("/api/resolve", {"id": str(identifier), "limit": max(1, min(int(limit), 50))})
 
     def get_document(self, doc_id: int) -> Dict[str, Any]:
-        data = self._get_json(f"/api/document/{int(doc_id)}")
+        data = self._get_json(f"/api/document/{_positive_doc_id(doc_id)}")
         if data.get("error"):
             raise ConceptioError(str(data["error"]))
         return data
@@ -329,12 +370,11 @@ class ConceptioClient:
         carries ``content_hash``, source, license, retrieval options, and
         citation data — enough for a consumer to verify and re-cite.
         """
-        if int(doc_id) < 1:
-            raise ConceptioError("Document id must be a positive integer.")
+        doc_id = _positive_doc_id(doc_id)
         params: Dict[str, Any] = {}
         if query:
             params["q"] = str(query)
-        data = self._get_json(f"/api/document/{int(doc_id)}/proof", params or None)
+        data = self._get_json(f"/api/document/{doc_id}/proof", params or None)
         if data.get("error"):
             raise ConceptioError(str(data["error"]))
         return data
@@ -401,9 +441,7 @@ class ConceptioClient:
 
     def send_zotero(self, doc_id: int) -> Dict[str, Any]:
         """Send one document through the server-owned Zotero gate."""
-        if int(doc_id) < 1:
-            raise ConceptioError("Document id must be a positive integer.")
-        return self._post_json("/api/connectors/zotero/send", {"doc_id": int(doc_id)})
+        return self._post_json("/api/connectors/zotero/send", {"doc_id": _positive_doc_id(doc_id)})
 
     def send_connector(self, connector: str, doc_id: int, vault: str = "") -> Dict[str, Any]:
         """Send one document through a server-owned connector contract."""
@@ -429,18 +467,14 @@ class ConceptioClient:
 
     def authorize_obsidian(self, doc_id: int) -> Dict[str, Any]:
         """Ask the server to authorize one metadata-only Obsidian handoff."""
-        if int(doc_id) < 1:
-            raise ConceptioError("Document id must be a positive integer.")
-        return self._post_json("/api/connectors/obsidian/authorize", {"doc_id": int(doc_id)})
+        return self._post_json("/api/connectors/obsidian/authorize", {"doc_id": _positive_doc_id(doc_id)})
 
     def log_obsidian(self, doc_id: int) -> Dict[str, Any]:
         """Record a successful Obsidian handoff without sending source bytes."""
-        if int(doc_id) < 1:
-            raise ConceptioError("Document id must be a positive integer.")
-        return self._post_json("/api/connectors/obsidian/log", {"doc_id": int(doc_id)})
+        return self._post_json("/api/connectors/obsidian/log", {"doc_id": _positive_doc_id(doc_id)})
 
     def get_citation(self, doc_id: int, format: str = "bibtex") -> str:
-        data = self._get_json(f"/api/cite/{int(doc_id)}", {"format": format})
+        data = self._get_json(f"/api/cite/{_positive_doc_id(doc_id)}", {"format": format})
         if data.get("error"):
             raise ConceptioError(str(data["error"]))
         return str(data.get("citation", ""))

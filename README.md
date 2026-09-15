@@ -300,15 +300,39 @@ request and parses a response, but nothing about what the CLI *decides* from a
 live exchange.
 
 `tests/live_check.py` covers that gap. It starts the shared loopback stub
-(`conceptio-nvim/test/stub_api.py`, started here in `done`/`running`/`expired`
-job modes), points the real binary at it with `CONCEPTIO_API_BASE` and an
-environment credential, and asserts on exit codes, on stdout and on the stub's
-request log. Everything stays on loopback: no account, no key, no production
-credit, and the CLI is given a throwaway config directory so your real
+(`conceptio-nvim/test/stub_api.py`, dialled into `done`/`running`/`expired` job
+modes and `exhausted`/`pro`/`not_configured` connector modes), points the real
+binary at it with `CONCEPTIO_API_BASE` and an environment credential, and asserts
+on exit codes, on stdout and on the stub's request log. It covers the whole
+surface rather than a sample of it — search (directives, filters, markdown,
+batch, jobs), resolve, cite, info, proof, download's boundary, the credential
+paths, the connector failure reasons, all eight MCP tools, and the exact argv
+each editor client sends (see below). It also refuses to run quietly against the
+wrong binary: if `conceptio --version` does not match the version this tree
+declares, every check would be proving an older install, so it fails and says so.
+
+Everything stays on loopback: no account, no key, no production credit, and the
+CLI is given a throwaway config directory so your real
 `~/.conceptio/config.json` is never read or written. `CONCEPTIO_CLI` selects
 the binary, `CONCEPTIO_STUB` the stub, `CONCEPTIO_LIVE_VERBOSE=1` echoes each
 command's output. It exits nonzero and prints every failing check with the
 command's own output.
+
+### The client contract
+
+The CLI is also a dependency of five editor clients — the Neovim plugin, the
+VS Code extension, the Obsidian plugin, the Raycast extension and the Alfred
+workflow. They exec this binary with an argv list and read stdout; nothing
+couples them but that grammar. `tests/client_contract.py` records every
+invocation they make, with the file it came from:
+
+- `tests/test_cli_contract.py` parses each row against `cli.build_parser()`, and
+  while a client's checkout sits next to this repo, asserts its sources still
+  contain the subcommand and flags the row claims.
+- `tests/live_check.py` runs the same rows against a real binary on the stub.
+
+If you change a subcommand or a flag, one of the two will fail and name the
+client. Add a row when a client gains a call.
 
 ---
 

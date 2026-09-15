@@ -25,6 +25,7 @@ Env:    CONCEPTIO_CLI     command for the CLI (default: ./.venv/Scripts/concepti
 
 import json
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -38,11 +39,24 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 STACK = REPO.parent
 
+sys.path.insert(0, str(REPO))
+from tests.client_contract import CLIENT_CALLS, JSON_CALLS, calls_for  # noqa: E402
+
 STUB_PY = Path(os.environ.get("CONCEPTIO_STUB") or (STACK / "conceptio-nvim" / "test" / "stub_api.py"))
 STUB_KEY = "ckey_live_local_stub"
 VERBOSE = os.environ.get("CONCEPTIO_LIVE_VERBOSE") == "1"
 
 BATCH = [{"q": "zero trust"}, {"q": "transformer"}]
+
+
+def source_version() -> str:
+    """The version *this* checkout declares — the anchor for the `--version` check."""
+    try:
+        text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', text)
+    return match.group(1) if match else ""
 
 
 # ── the CLI under test ───────────────────────────────────────────────────────
@@ -96,6 +110,18 @@ class Live:
         self.env = env
         self.cwd = cwd
 
+    def with_home(self, home):
+        """The same caller with a config dir of its own.
+
+        `auth` writes `~/.conceptio/config.json` and the refusal check needs a
+        profile nothing has ever written to, so those two get a home of their
+        own instead of sharing the one the rest of the run reads.
+        """
+        env = dict(self.env)
+        env["HOME"] = str(home)
+        env["USERPROFILE"] = str(home)
+        return Live(self.command, env, self.cwd)
+
     def run(self, *args, stdin_text=None, timeout=60, base=None, key=None, extra_env=None):
         env = dict(self.env)
         # Every network-touching check MUST pass `base`. Without it the CLI falls
@@ -130,16 +156,20 @@ class Stub:
 
     A job-mode instance is how a *scenario* is dialled: `running` never finishes
     (so a `--wait` budget can be exhausted), `expired` reports a job the server
-    gave up on. Nothing is smuggled through query text.
+    gave up on. Nothing is smuggled through query text. `connector_mode` dials
+    the same way for the connectors, whose failures arrive as a server-issued
+    *reason* the CLI maps to a human message.
     """
 
-    def __init__(self, job_mode="done", log_path=None):
+    def __init__(self, job_mode="done", log_path=None, connector_mode="ok"):
         self.job_mode = job_mode
+        self.connector_mode = connector_mode
         self.log_path = log_path
         port = free_port()
         self.base = "http://127.0.0.1:%d" % port
         env = dict(os.environ)
         env["CONCEPTIO_STUB_JOB_MODE"] = job_mode
+        env["CONCEPTIO_STUB_CONNECTOR_MODE"] = connector_mode
         env["CONCEPTIO_STUB_VERBOSE"] = "1" if log_path else "0"
         env["PYTHONUNBUFFERED"] = "1"
         python = os.environ.get("CONCEPTIO_PYTHON") or sys.executable
@@ -157,7 +187,8 @@ class Stub:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if self.proc.poll() is not None:
-                raise RuntimeError("the stub exited before it served a request (job mode %s)" % self.job_mode)
+                raise RuntimeError("the stub exited before it served a request (job mode %s, "
+                                   "connector mode %s)" % (self.job_mode, self.connector_mode))
             try:
                 urllib.request.urlopen(self.base + "/api/me", timeout=1).read()
                 return
@@ -233,8 +264,18 @@ def run_batch(live, stub, *extra, job_mode=None):
                     base=stub.base, timeout=120)
 
 
-def define_checks(live, main, running, expired):
-    """Build the check list from the three stub instances in play."""
+def define_checks(live, main, running, expired, connectors, work):
+    """Build the check list from the stub instances in play (and a temp root)."""
+    def mcp_call(caller, base, tool, arguments, timeout=90):
+        """One `tools/call`, returning the process whose stdout carries the reply."""
+        request = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                              "params": {"name": tool, "arguments": arguments}}) + "\n"
+        proc = caller.run("mcp", stdin_text=request, timeout=timeout, base=base)
+        exit_is(proc, 0, "mcp %s" % tool)
+        expect(next((l for l in proc.stdout.splitlines() if l.strip().startswith("{")), ""),
+               "mcp %s: no JSON-RPC line on stdout: %s" % (tool, proc.stdout.strip()[:300]))
+        return proc
+
     queries = live.cwd / "queries.json"
     queries.write_text(json.dumps(BATCH), encoding="utf-8")
 
@@ -436,6 +477,306 @@ def define_checks(live, main, running, expired):
         expect("at most 10" in (proc.stdout + proc.stderr),
                "sync with 11: wrong message: %s" % (proc.stdout + proc.stderr).strip()[:200])
 
+    # ── the instrument itself ───────────────────────────────────────────────
+
+    @check("--version — the binary under test is this tree, not a stale install")
+    def _version():
+        proc = live.run("--version", base=main.base)
+        exit_is(proc, 0, "--version")
+        reported = proc.stdout.strip().split()[-1]
+        want = source_version()
+        expect(want, "could not read `version` from pyproject.toml")
+        expect(
+            reported == want,
+            "--version reports %s while this tree declares %s, so the binary under test is an "
+            "older install and every check below is proving the wrong code. Refresh it "
+            "(`pip install -e .`) or point CONCEPTIO_CLI at the binary you meant."
+            % (reported, want),
+        )
+
+    # ── the read surface the offline suite can only mock ────────────────────
+
+    @check("resolve — the identifier reaches the API verbatim; kind and results render")
+    def _resolve():
+        mark = main.mark()
+        proc = live.run("resolve", "doi:10.1145/3290605.3300333", base=main.base)
+        exit_is(proc, 0, "resolve")
+        # Assert on the request, not on the reply: the stub answers a canned
+        # identifier whatever it is asked (its own contract with the nvim
+        # suite), so an echo in stdout would be the stub talking, not the CLI.
+        expect("Kind:" in proc.stdout and "result(s):" in proc.stdout,
+               "resolve: the typed answer is not rendered: %s" % proc.stdout.strip()[:200])
+        line = "".join(main.since(mark, "GET /api/resolve"))
+        expect(line, "resolve: the stub saw no GET /api/resolve")
+        expect("doi%3A10.1145%2F3290605.3300333" in line,
+               "resolve: the identifier was rewritten in transit: %s" % line)
+        proc = live.run("resolve", "RFC 2119", "--json", base=main.base)
+        exit_is(proc, 0, "resolve --json")
+        expect(stdout_json(proc, "resolve --json").get("kind") == "rfc",
+               "resolve --json: the API's kind did not survive into the payload")
+
+    @check("search `source:` — stripped from the query, applied as a real filter")
+    def _directives():
+        mark = main.mark()
+        proc = live.run("search", "source:nist zero trust", "--limit", "5", "--json", base=main.base)
+        exit_is(proc, 0, "search source:")
+        data = stdout_json(proc, "search source:")
+        expect(data.get("query") == "zero trust",
+               "search source:: the API received %r as the query — the directive is client-side "
+               "syntax and the server does not parse it" % data.get("query"))
+        line = "".join(main.since(mark, "GET /api/search"))
+        expect("sources=nist" in line, "search source:: no source filter reached the API: %s" % line)
+        expect("limit=5" in line, "search source:: --limit did not reach the API: %s" % line)
+
+    @check("search filters — --lang/--offset/--license reach the request")
+    def _filters():
+        mark = main.mark()
+        proc = live.run("search", "zero trust", "--lang", "en", "--offset", "20",
+                        "--license", "commercial-ok", "--json", base=main.base)
+        exit_is(proc, 0, "search filters")
+        line = "".join(main.since(mark, "GET /api/search"))
+        for needle in ("language=en", "offset=20", "license=commercial-ok"):
+            expect(needle in line, "search filters: %s never reached the API: %s" % (needle, line))
+
+    @check("search --markdown — note-ready markdown, not a terminal table")
+    def _markdown():
+        proc = live.run("search", "zero trust", "--markdown", base=main.base)
+        exit_is(proc, 0, "search --markdown")
+        expect("## Conceptio results" in proc.stdout,
+               "search --markdown: no markdown heading: %s" % proc.stdout.strip()[:200])
+        expect("**Zero Trust Architecture**" in proc.stdout and "[source]" in proc.stdout,
+               "search --markdown: the entries are not markdown: %s" % proc.stdout.strip()[:300])
+
+    @check("cite — the format rides as a query parameter; stdout is the citation")
+    def _cite():
+        mark = main.mark()
+        proc = live.run("cite", "7288", "--format", "apa", base=main.base)
+        exit_is(proc, 0, "cite")
+        expect("conceptio7288" in proc.stdout, "cite: no citation on stdout: %r" % proc.stdout[:200])
+        line = "".join(main.since(mark, "GET /api/cite/7288"))
+        expect("format=apa" in line, "cite: the format never reached the API: %s" % line)
+
+    @check("cite --format bogus — refused locally, before a single request")
+    def _cite_bad_format():
+        mark = main.mark()
+        proc = live.run("cite", "7288", "--format", "vancouver", base=main.base)
+        expect(proc.returncode != 0, "cite --format vancouver: accepted, exit 0")
+        expect(not main.since(mark, "GET /api/cite"),
+               "cite --format bogus: a request was sent anyway")
+
+    @check("info / proof — metadata and the evidence bundle over the real endpoints")
+    def _info_proof():
+        mark = main.mark()
+        proc = live.run("info", "2844", "--json", base=main.base)
+        exit_is(proc, 0, "info --json")
+        expect(str(stdout_json(proc, "info --json").get("id")) == "2844",
+               "info --json: wrong document in the payload")
+        expect(main.since(mark, "GET /api/document/2844"), "info: the stub saw no document GET")
+        mark = main.mark()
+        proc = live.run("proof", "2844", base=main.base)
+        exit_is(proc, 0, "proof")
+        expect("Proof bundle: document 2844" in proc.stdout,
+               "proof: the bundle summary is missing: %s" % proc.stdout.strip()[:200])
+        expect("sha256:" in proc.stdout, "proof: no content hash was rendered")
+        expect(main.since(mark, "GET /api/document/2844/proof"),
+               "proof: the stub saw no proof GET")
+        proc = live.run("proof", "2844", "-q", "quantum", "--json", base=main.base)
+        exit_is(proc, 0, "proof -q")
+        expect("quantum" in str(stdout_json(proc, "proof -q").get("snippet")),
+               "proof -q: the passage query did not reach the bundle")
+
+    @check("proof — the evidence hash stays on its label's line at 80 columns")
+    def _proof_hash_line():
+        # A 71-character hash plus its label overflows a default terminal, and a
+        # folded value lands on a second, unindented line: the one line a reader
+        # copies out of the bundle arrives split in two.
+        proc = live.run("proof", "2844", base=main.base)
+        exit_is(proc, 0, "proof (80 cols)")
+        line = next((l for l in proc.stdout.splitlines() if "SHA-256" in l), "")
+        expect(line, "proof: no SHA-256 row in the bundle")
+        expect("sha256:" in line,
+               "proof: the hash folded onto its own line: %r" % line.strip())
+
+    @check("a document id below 1 is refused before any request (info, cite, proof)")
+    def _bad_doc_id():
+        mark = main.mark()
+        for command in ("info", "cite", "proof"):
+            proc = live.run(command, "0", base=main.base)
+            exit_is(proc, 1, "%s 0" % command)
+            expect("positive integer" in (proc.stdout + proc.stderr),
+                   "%s 0: the message does not say what is wrong: %s"
+                   % (command, (proc.stdout + proc.stderr).strip()[:200]))
+        expect(not main.since(mark, "/api/document/0") and not main.since(mark, "/api/cite/0"),
+               "a document id of 0 still produced a request")
+
+    # ── credentials ─────────────────────────────────────────────────────────
+
+    @check("auth — the key is written to the config file and validated against the API")
+    def _auth():
+        home = work / "home-auth"
+        home.mkdir(exist_ok=True)
+        proc = live.with_home(home).run("auth", "ckey_live_written_key", base=main.base, key="")
+        exit_is(proc, 0, "auth")
+        config = home / ".conceptio" / "config.json"
+        expect(config.exists(), "auth: no config file was written under %s" % home)
+        saved = json.loads(config.read_text(encoding="utf-8"))
+        expect(saved.get("api_key") == "ckey_live_written_key",
+               "auth: the key was not stored (api_key=%r)" % saved.get("api_key"))
+        expect(saved.get("license_key") == "",
+               "auth: saving an API key must clear a stale license key, or two credentials ship")
+        expect("Key accepted" in proc.stdout,
+               "auth: the live validation never ran: %s" % proc.stdout.strip()[:200])
+
+    @check("a saved config-file credential authenticates with no environment key")
+    def _config_credential():
+        # Only the env-only path was covered before; this is the path the README
+        # documents (sign in once, search from anywhere).
+        mark = main.mark()
+        proc = live.with_home(work / "home-auth").run("quota", "--json", base=main.base, key="")
+        exit_is(proc, 0, "quota (config-file credential)")
+        expect(stdout_json(proc, "quota (config-file credential)").get("auth") == "api_key",
+               "quota: the saved key was not honored")
+        expect(main.since(mark, "GET /api/me"), "quota: no request was made")
+        expect("saved in ~/.conceptio/config.json" in proc.stderr,
+               "quota: a key read from the config file should be reported as saved: %r"
+               % proc.stderr.strip()[:200])
+
+    @check("no credential anywhere — refused, exit 1, nothing leaves the box")
+    def _keyless():
+        home = work / "home-keyless"
+        home.mkdir(exist_ok=True)
+        mark = main.mark()
+        proc = live.with_home(home).run("search", "zero trust", "--json", base=main.base, key="")
+        exit_is(proc, 1, "keyless search")
+        expect("Authentication required" in (proc.stdout + proc.stderr),
+               "keyless: no guidance was printed: %s" % (proc.stdout + proc.stderr).strip()[:200])
+        expect(proc.stdout.strip() == "",
+               "keyless --json: the refusal leaked into stdout: %r" % proc.stdout[:200])
+        expect(not main.since(mark, "GET /api/search"), "keyless: a request left the box anyway")
+
+    @check("quota names the environment variable when that is where the key came from")
+    def _env_origin():
+        # The credential here arrives by environment (that is how this whole
+        # harness supplies it) and no config file exists — so a sentence about
+        # the file is simply false, and CI/editor users read that sentence.
+        proc = live.run("quota", base=main.base)
+        exit_is(proc, 0, "quota")
+        expect("CONCEPTIO_API_KEY environment variable" in proc.stdout,
+               "quota does not say where the key came from: %s" % proc.stdout.strip()[:200])
+        expect("saved in ~/.conceptio/config.json" not in proc.stdout,
+               "quota claims an environment key was saved to a file")
+
+    # ── the download boundary ───────────────────────────────────────────────
+
+    @check("download — a loopback target is refused, and nothing is written")
+    def _download_local():
+        out = live.cwd / "local.pdf"
+        proc = live.run("download", main.base + "/x.pdf", "-o", str(out), base=main.base)
+        exit_is(proc, 1, "download loopback")
+        expect("local and private-network" in (proc.stdout + proc.stderr),
+               "download: a loopback URL was not refused: %s" % (proc.stdout + proc.stderr).strip()[:200])
+        expect(not out.exists(), "download: a refused target still produced a file")
+
+    @check("download <id> — a document with no direct link says so instead of writing")
+    def _download_no_link():
+        out = live.cwd / "nolink.pdf"
+        proc = live.run("download", "7288", "-o", str(out), base=main.base)
+        exit_is(proc, 1, "download (no direct link)")
+        expect("no direct PDF link" in (proc.stdout + proc.stderr),
+               "download: the reason is not stated: %s" % (proc.stdout + proc.stderr).strip()[:200])
+        expect(not out.exists(), "download: a file appeared for a document with no PDF")
+
+    # ── connector failures: the server's reason picks the message ───────────
+
+    @check("save — the server's refusal reason picks the human message")
+    def _connector_reasons():
+        ids = live.cwd / "bulk_ids.json"
+        ids.write_text(json.dumps([7288, 2844]), encoding="utf-8")
+        cases = (
+            ("exhausted", ["save", "--to", "zotero", "7288"], "shared connector trial is used up"),
+            ("pro", ["save", "--to", "zotero", "--all-saved", "--ids", str(ids)], "Pro plan"),
+            ("not_configured", ["save", "--to", "zotero", "7288"], "Configure Zotero"),
+        )
+        for mode, argv, needle in cases:
+            stub = connectors.get(mode)
+            expect(stub, "no stub was started for connector mode %r" % mode)
+            proc = live.run(*argv, base=stub.base)
+            exit_is(proc, 1, "save (%s)" % mode)
+            expect(needle in (proc.stdout + proc.stderr),
+                   "save (%s): the reason did not become the right message: %s"
+                   % (mode, (proc.stdout + proc.stderr).strip()[:200]))
+
+    # ── the rest of the MCP surface ─────────────────────────────────────────
+
+    @check("mcp — every remaining tool answers over the real transport")
+    def _mcp_all_tools():
+        # Needles avoid quote characters: a tool's answer is a JSON document
+        # carried *inside* a JSON string, so its own quotes arrive escaped.
+        cases = (
+            ("conceptio_resolve", {"id": "RFC 2119"}, "RFC 2119"),
+            ("conceptio_get_citation", {"doc_id": 7288, "format": "apa"}, "conceptio7288"),
+            ("conceptio_get_document", {"doc_id": 2844}, "Key words for use in RFCs"),
+            ("conceptio_connectors_send", {"connector": "zotero", "doc_id": 7288}, "zotero"),
+            ("conceptio_connectors_send_all", {"doc_ids": [7288, 2844]}, "total"),
+        )
+        mark = main.mark()
+        for tool, arguments, needle in cases:
+            proc = mcp_call(live, main.base, tool, arguments)
+            reply = json.loads(proc.stdout.strip().splitlines()[0])
+            expect("error" not in reply,
+                   "%s: JSON-RPC error %s" % (tool, str(reply.get("error"))[:200]))
+            content = json.dumps(reply.get("result", {}))
+            expect('"isError": true' not in content, "%s: the call failed: %s" % (tool, content[:200]))
+            expect(needle in content, "%s: the answer did not carry %r: %s" % (tool, needle, content[:200]))
+        expect(main.since(mark, "GET /api/resolve"), "mcp: no resolve request reached the API")
+        expect(main.since(mark, "GET /api/cite/7288"), "mcp: no citation request reached the API")
+        expect(main.since(mark, "POST /api/connectors/zotero/send"),
+               "mcp: no connector request reached the API")
+
+    @check("mcp — download_pdf keeps its writes inside the workspace")
+    def _mcp_download_guard():
+        proc = mcp_call(live, main.base, "conceptio_download_pdf",
+                        {"doc_id_or_url": "7288", "output_path": "../escape.pdf"})
+        reply = json.loads(proc.stdout.strip().splitlines()[0])
+        expect("workspace" in json.dumps(reply.get("error", {})),
+               "mcp download_pdf: a traversal path was not refused: %s" % json.dumps(reply)[:200])
+        expect(not (live.cwd.parent / "escape.pdf").exists(),
+               "mcp download_pdf: a file was written outside the workspace")
+
+    @check("mcp — an unknown tool is a tool error, not a crash")
+    def _mcp_unknown():
+        proc = mcp_call(live, main.base, "definitely_not_a_tool", {})
+        reply = json.loads(proc.stdout.strip().splitlines()[0])
+        expect(reply.get("result", {}).get("isError") is True,
+               "mcp: an unknown tool did not answer as a tool error: %s" % json.dumps(reply)[:200])
+        expect(proc.returncode == 0, "mcp: the server exited %s on an unknown tool" % proc.returncode)
+
+    # ── the five clients, driven exactly as they drive it ───────────────────
+
+    def _client_check(client):
+        def _run():
+            failures = []
+            for argv in CLIENT_CALLS[client]:
+                proc = live.run(*argv, base=main.base, timeout=90)
+                rendered = " ".join(argv)
+                if proc.returncode != 0:
+                    failures.append("`%s` exited %s: %s" % (rendered, proc.returncode,
+                                                            (proc.stdout + proc.stderr).strip()[:160]))
+                elif not proc.stdout.strip():
+                    failures.append("`%s` printed nothing" % rendered)
+                elif argv[0] in JSON_CALLS:
+                    try:
+                        json.loads(proc.stdout)
+                    except ValueError:
+                        failures.append("`%s` did not return JSON" % rendered)
+            expect(not failures,
+                   "the %s client's argv is no longer served by this CLI:\n      %s"
+                   % (client, "\n      ".join(failures)))
+        return _run
+
+    for _client in sorted(CLIENT_CALLS):
+        check("%s — every argv its shipped version sends is still served" % _client)(_client_check(_client))
+
 
 # ── runner ──────────────────────────────────────────────────────────────────
 
@@ -451,7 +792,7 @@ def main():
     logs.mkdir()
 
     print("Conceptio CLI live check — real CLI, loopback stub")
-    print("  cli      %s" % " ".join(command))
+    print("  cli      %s  (this tree declares %s)" % (" ".join(command), source_version() or "?"))
     print("  stub     %s" % STUB_PY)
 
     stubs = []
@@ -459,12 +800,17 @@ def main():
         main_stub = Stub("done", logs / "main.log")
         running_stub = Stub("running", logs / "running.log")
         expired_stub = Stub("expired", logs / "expired.log")
-        stubs = [main_stub, running_stub, expired_stub]
+        connector_stubs = {
+            mode: Stub("done", logs / ("connector-%s.log" % mode), connector_mode=mode)
+            for mode in ("exhausted", "pro", "not_configured")
+        }
+        stubs = [main_stub, running_stub, expired_stub] + list(connector_stubs.values())
         print("  origins  main=%s running=%s expired=%s"
               % (main_stub.base, running_stub.base, expired_stub.base))
+        print("  credit   %s" % " ".join("%s=%s" % (m, s.base) for m, s in sorted(connector_stubs.items())))
 
         live = Live(command, config_home(home, main_stub.base), tmp)
-        define_checks(live, main_stub, running_stub, expired_stub)
+        define_checks(live, main_stub, running_stub, expired_stub, connector_stubs, tmp)
         print("")
 
         for index, (name, fn) in enumerate(CHECKS, 1):

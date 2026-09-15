@@ -12,4 +12,4 @@ try:
     from importlib.metadata import version as _dist_version
     __version__ = _dist_version("conceptio-search")
 except Exception:
-    __version__ = "0.3.1"
+    __version__ = "0.3.2"

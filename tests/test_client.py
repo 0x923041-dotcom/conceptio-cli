@@ -625,3 +625,83 @@ def test_free_key_search_response_carries_remaining():
     }))
     data = client.search("moby dick")
     assert data["trial_remaining"] == 31
+
+
+# ── where the effective credential came from ────────────────────────────────
+#
+# `quota` tells the user where their key lives, and there are three places it
+# can be: an environment variable (the documented editor/CI path, where no file
+# exists), the config file (`conceptio auth`), or an explicit argument for a
+# caller embedding the client. The sentence is now derived from the same
+# precedence `_headers` uses, so it cannot describe a different credential.
+
+def _clear_credentials(monkeypatch):
+    for name in ("CONCEPTIO_API_KEY", "CONCEPTIO_LICENSE_KEY", "CONCEPTIO_BEARER_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_credential_origin_environment(monkeypatch):
+    _clear_credentials(monkeypatch)
+    monkeypatch.setenv("CONCEPTIO_API_KEY", "ckey_live_from_env")
+    client = ConceptioClient()
+    assert client.api_key == "ckey_live_from_env"
+    assert client.credential_origin == "environment"
+    assert client.credential_env_var == "CONCEPTIO_API_KEY"
+
+
+def test_credential_origin_config_file(monkeypatch):
+    _clear_credentials(monkeypatch)
+    monkeypatch.setattr(client_mod, "load_config", lambda: {
+        "api_base": "https://conceptio.test", "api_key": "ckey_live_from_file", "license_key": "",
+    })
+    client = ConceptioClient()
+    assert client.credential_origin == "config file"
+    assert client.credential_env_var == ""
+
+
+def test_credential_origin_explicit_argument_wins_over_environment(monkeypatch):
+    monkeypatch.setenv("CONCEPTIO_API_KEY", "ckey_live_from_env")
+    client = ConceptioClient(api_key="ckey_live_from_argument")
+    assert client.api_key == "ckey_live_from_argument"
+    assert client.credential_origin == "argument"
+
+
+def test_credential_origin_follows_the_same_precedence_as_the_headers(monkeypatch):
+    """A bearer token is what gets sent, so it is what the hint must describe."""
+    _clear_credentials(monkeypatch)
+    monkeypatch.setenv("CONCEPTIO_API_KEY", "ckey_live_from_env")
+    monkeypatch.setenv("CONCEPTIO_BEARER_TOKEN", "session-token")
+    client = ConceptioClient()
+    assert client._headers().get("Authorization") == "Bearer session-token"
+    assert client.credential_env_var == "CONCEPTIO_BEARER_TOKEN"
+
+
+def test_credential_origin_is_empty_without_a_credential(monkeypatch):
+    _clear_credentials(monkeypatch)
+    monkeypatch.setattr(client_mod, "load_config", lambda: {
+        "api_base": "https://conceptio.test", "api_key": "", "license_key": "",
+    })
+    assert ConceptioClient().credential_origin == ""
+
+
+# ── a document id below 1 never becomes a request ───────────────────────────
+
+def _no_requests(request):
+    raise AssertionError("a request left the box for %s" % request.url)
+
+
+@pytest.mark.parametrize("call", [
+    lambda c: c.get_document(0),
+    lambda c: c.get_document(-3),
+    lambda c: c.get_citation(0),
+    lambda c: c.get_proof(0),
+    lambda c: c.send_zotero(0),
+    lambda c: c.authorize_obsidian(0),
+    lambda c: c.log_obsidian(0),
+    lambda c: c.get_document("not-a-number"),
+])
+def test_document_ids_below_one_are_refused_before_any_request(call):
+    """`info 0` and `cite 0` used to ask the API for document 0 and render the answer."""
+    client = _make_client(_no_requests)
+    with pytest.raises(ConceptioError, match="positive integer"):
+        call(client)

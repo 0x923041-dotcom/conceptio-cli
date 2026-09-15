@@ -149,7 +149,11 @@ def _print_proof_summary(data: dict, doc_id: int) -> None:
     version = data.get("version_status") or data.get("version") or ""
     console.print(f"  [dim]Source[/]     {source_label}")
     console.print(f"  [dim]License[/]    {license}")
-    console.print(f"  [dim]SHA-256[/]    {content_hash}")
+    # The hash is 71 characters; with the label it overflows an 80-column
+    # terminal, and a wrapped value loses its indentation — the one line a
+    # reader copies to verify the bundle arrives split in two. Let it overflow
+    # instead of folding.
+    console.print(f"  [dim]SHA-256[/]    {content_hash}", no_wrap=True)
     console.print(f"  [dim]Authority[/]  {authority if authority is not None else '—'}")
     console.print(f"  [dim]Retrieved[/]  {retrieved}")
     if version:
@@ -224,6 +228,28 @@ def handle_save(client: ConceptioClient, destination: str, doc_id: Optional[int]
         return _connector_error(error)
 
 
+def credential_hint(client: ConceptioClient) -> Optional[str]:
+    """One sentence naming the effective credential and where it came from.
+
+    Only a prefix and a suffix are ever printed. The location is *measured* from
+    the client's resolution order, not assumed: a key supplied by
+    `CONCEPTIO_API_KEY` was being reported as "saved in ~/.conceptio/config.json"
+    even when no config file existed, which is exactly the documented CI/editor
+    path and the one case where the sentence was false.
+    """
+    credential = client.api_key or client.license_key
+    if not credential:
+        return None
+    preview = f"{credential[:8]}...{credential[-4:]}"
+    origin = getattr(client, "credential_origin", "")
+    if origin == "environment":
+        name = getattr(client, "credential_env_var", "") or "an environment variable"
+        return f"{preview} (from the {name} environment variable)"
+    if origin == "argument":
+        return f"{preview} (supplied by the calling process)"
+    return f"{preview} (saved in ~/.conceptio/config.json)"
+
+
 def handle_quota(client: ConceptioClient, as_json: bool = False) -> int:
     try:
         data = client.quota()
@@ -234,20 +260,17 @@ def handle_quota(client: ConceptioClient, as_json: bool = False) -> int:
         # Machine consumers (editor extensions, status surfaces) render the tier
         # themselves. The credential hint is human text, so it goes to stderr and
         # stdout stays pure JSON — the same contract as `info`/`proof --json`.
-        credential = client.api_key or client.license_key
-        if credential:
-            print(
-                f"Credential: {credential[:8]}...{credential[-4:]} (saved in ~/.conceptio/config.json)",
-                file=sys.stderr,
-            )
+        hint = credential_hint(client)
+        if hint:
+            print(f"Credential: {hint}", file=sys.stderr)
         print(json.dumps(data, indent=2))
         return 0
     tier = data.get("tier") or "public"
     auth_path = data.get("auth") or "public"
-    credential = client.api_key or client.license_key
     shown = False
-    if credential:
-        console.print(f"[bold]Credential:[/] {credential[:8]}...{credential[-4:]} (saved in ~/.conceptio/config.json)")
+    hint = credential_hint(client)
+    if hint:
+        console.print(f"[bold]Credential:[/] {hint}")
         shown = True
     if auth_path == "api_key":
         console.print(f"[bold]Auth:[/] [cyan]API key[/] — authenticated agent access.")
@@ -325,14 +348,24 @@ def handle_auth(key: str) -> int:
         console.print("[bold red][ERR][/] A valid key is required — "
                       "license (CONCEPTIO-XXXX-XXXX-XXXX) or API key (ckey_live_...).")
         return 1
-    if _is_api_key(key):
+    is_api = _is_api_key(key)
+    if is_api:
         set_api_key(key)
         console.print(f"[bold green][OK][/] API key saved to ~/.conceptio/config.json")
     else:
         set_license_key(key)
         console.print(f"[bold green][OK][/] License key saved to ~/.conceptio/config.json")
+    # An exported variable wins over the file, so a user who just saved a key
+    # can be shadowed by one they forgot about — say so instead of leaving them
+    # to wonder why `conceptio quota` still reports the old tier.
+    shadow = "CONCEPTIO_API_KEY" if is_api else "CONCEPTIO_LICENSE_KEY"
+    if os.environ.get(shadow, "").strip() and os.environ.get(shadow, "").strip() != key:
+        console.print(f"[yellow]Note:[/] {shadow} is set in this environment and takes "
+                      "precedence over the saved key for commands you run here.")
     # Validate against the live API so the user knows immediately if it is accepted.
-    client = ConceptioClient()
+    # The key just supplied is the subject of the test — asking a client that
+    # resolves environment-first would validate whatever it found there instead.
+    client = ConceptioClient(api_key=key if is_api else "", license_key="" if is_api else key)
     try:
         data = client.quota()
         tier = data.get("tier") or "public"
@@ -352,8 +385,15 @@ def handle_auth(key: str) -> int:
     return 0
 
 
-def main(argv: Optional[list] = None) -> int:
-    _prepare_stdio()
+def build_parser() -> argparse.ArgumentParser:
+    """The CLI's grammar, built once and introspectable.
+
+    Separate from `main` so the shipped command surface can be *tested* rather
+    than described: the editor extensions are clients of this grammar (they
+    exec the binary with an argv list), so a rename or a dropped flag breaks a
+    shipped extension silently. `tests/test_cli_contract.py` parses the argv
+    each client sends against this parser; `main` only reads from it.
+    """
     parser = argparse.ArgumentParser(
         prog="conceptio",
         description="Conceptio — the document retrieval layer for AI agents. Search the "
@@ -432,6 +472,12 @@ def main(argv: Optional[list] = None) -> int:
 
     sub.add_parser("mcp", help="Start the stdio Model Context Protocol server for AI agents")
 
+    return parser
+
+
+def main(argv: Optional[list] = None) -> int:
+    _prepare_stdio()
+    parser = build_parser()
     args = parser.parse_args(argv)
     if getattr(args, "json_global", False):
         args.json = True

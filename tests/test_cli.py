@@ -545,6 +545,80 @@ def test_mcp_refuses_keyless_on_stderr(capsys, monkeypatch):
     assert "Authentication required" in err
 
 
+def test_quota_reports_an_environment_key_as_an_environment_key(capsys, monkeypatch):
+    """Supplying the key by environment is the documented editor/CI path — the
+    one case where no config file exists, so a sentence about the file is wrong."""
+    class DevClient(FakeClient):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **{**kw, "api_key": "ckey_live_abcdef0123456789"})
+            self.credential_origin = "environment"
+            self.credential_env_var = "CONCEPTIO_API_KEY"
+
+        def quota(self):
+            return {"tier": "dev", "auth": "api_key"}
+
+    monkeypatch.setattr(cli_mod, "ConceptioClient", DevClient)
+    assert main(["quota"]) == 0
+    out = capsys.readouterr().out
+    assert "CONCEPTIO_API_KEY environment variable" in out
+    assert "saved in ~/.conceptio/config.json" not in out
+
+
+def test_quota_still_reports_a_saved_key_as_saved(capsys, monkeypatch):
+    class DevClient(FakeClient):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **{**kw, "api_key": "ckey_live_abcdef0123456789"})
+            self.credential_origin = "config file"
+
+        def quota(self):
+            return {"tier": "dev", "auth": "api_key"}
+
+    monkeypatch.setattr(cli_mod, "ConceptioClient", DevClient)
+    assert main(["quota"]) == 0
+    out = capsys.readouterr().out
+    assert "saved in ~/.conceptio/config.json" in out
+    assert "environment variable" not in out
+
+
+def test_auth_validates_the_key_it_was_handed(capsys, monkeypatch):
+    """The key just supplied is the subject of the test. Asking a client that
+    resolves environment-first would validate whatever it found there instead."""
+    seen = {}
+
+    class RecordingClient(FakeClient):
+        def __init__(self, *a, **kw):
+            seen["api_key"] = kw.get("api_key")
+            super().__init__(*a, **kw)
+
+        def quota(self):
+            return {"tier": "dev", "auth": "api_key"}
+
+    monkeypatch.setattr(cli_mod, "ConceptioClient", RecordingClient)
+    monkeypatch.setattr(cli_mod, "set_api_key", lambda key: seen.setdefault("saved", key))
+    monkeypatch.setenv("CONCEPTIO_API_KEY", "ckey_live_environment_one")
+    assert main(["auth", "ckey_live_the_new_key"]) == 0
+    assert seen["saved"] == "ckey_live_the_new_key"
+    assert seen["api_key"] == "ckey_live_the_new_key"
+    # ...and the environment shadowing that key is stated, not left to surprise.
+    assert "CONCEPTIO_API_KEY is set" in capsys.readouterr().out
+
+
+def test_proof_hash_stays_on_the_label_line(capsys, monkeypatch):
+    """A 71-character hash plus its label overflows an 80-column terminal; a
+    folded value lands on a second, unindented line and the one line a reader
+    copies out of the bundle arrives split in two."""
+    class HashClient(FakeClient):
+        def get_proof(self, doc_id, query=None):
+            return {"doc_id": doc_id, "content_hash": "sha256:" + "ab" * 32,
+                    "source_label": "NIST", "license": "Open Access"}
+
+    monkeypatch.setattr(cli_mod, "ConceptioClient", HashClient)
+    assert main(["proof", "1"]) == 0
+    lines = [l for l in capsys.readouterr().out.splitlines() if "SHA-256" in l]
+    assert lines, "the bundle printed no SHA-256 row"
+    assert "sha256:" in lines[0], "the hash folded onto its own line: %r" % lines[0]
+
+
 def test_license_key_satisfies_gate(capsys, monkeypatch):
     monkeypatch.setattr(
         cli_mod, "load_config",
