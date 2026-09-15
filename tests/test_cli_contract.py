@@ -12,6 +12,7 @@ What is *not* covered here: argument order, and values. `live_check.py` runs the
 same table end to end against a real binary.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,34 @@ from conceptio_cli.cli import build_parser
 from tests.client_contract import CLIENT_CALLS, CLIENT_SOURCES
 
 STACK = Path(__file__).resolve().parent.parent.parent
+REPO = Path(__file__).resolve().parent.parent
+
+# Every client tells the user which CLI release is current, in prose. Nothing
+# checks prose: when 0.3.3 shipped, four of the five still said "The current
+# release is 0.3.2", and every one of their own suites stayed green — a client
+# cannot see this repo's version. This repo can see all of them, so the claim is
+# checked here, next to the argv contract it belongs to.
+CLIENT_READMES = {
+    "neovim": STACK / "conceptio-nvim" / "README.md",
+    "vscode": STACK / "conceptio-vscode" / "README.md",
+    "raycast": STACK / "conceptio-raycast" / "README.md",
+    "alfred": STACK / "conceptio-alfred" / "README.md",
+    "obsidian": STACK / "conceptio-obsidian" / "README.md",
+}
+
+# Deliberately narrow: it matches the sentence the clients actually use, so it
+# cannot pick up an unrelated version number (a minimum CLI version, a Neovim
+# requirement) and report it as a stale release.
+RELEASE_CLAIM = re.compile(r"current release is\s+\**\s*(\d+\.\d+\.\d+)", re.IGNORECASE)
+
+
+def source_version():
+    match = re.search(
+        r'(?m)^version\s*=\s*"([^"]+)"',
+        (REPO / "pyproject.toml").read_text(encoding="utf-8"),
+    )
+    assert match, "could not read version from pyproject.toml"
+    return match.group(1)
 
 
 def test_every_client_argv_is_accepted_by_the_cli_parser():
@@ -60,6 +89,40 @@ def test_the_table_still_matches_the_clients_that_are_checked_out():
 
     if not checked:
         pytest.skip("no client checkouts next to this repo (%s)" % ", ".join(sorted(missing)))
+
+
+def test_client_readmes_name_this_release():
+    """A client README that names a release has to name *this* one.
+
+    Absence of a checkout is a skip, never a pass. A README that stopped naming
+    a release is allowed — that is a documentation decision, not drift — but if
+    no README names one at all, the extractor has gone blind rather than the
+    documents having become correct, so that fails instead of passing quietly.
+    """
+    declared = source_version()
+    claims, stale, missing = [], [], []
+    for client, path in sorted(CLIENT_READMES.items()):
+        if not path.exists():
+            missing.append(client)
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for found in RELEASE_CLAIM.findall(text):
+            claims.append((client, found))
+            if found != declared:
+                stale.append((client, found))
+
+    assert not stale, (
+        "%s, but this repo is %s. A user reads the client's README and installs "
+        "what it names, so the two have to agree: either the READMEs are stale "
+        "or this version moved without them."
+        % (", ".join("%s says %s" % (c, v) for c, v in sorted(stale)), declared)
+    )
+    if not claims:
+        pytest.skip("no client checkouts next to this repo (%s)" % ", ".join(sorted(missing)))
+    assert len(claims) >= 3, (
+        "only %d client README(s) state a current release — the phrase moved or "
+        "was dropped, so this check is no longer guarding anything." % len(claims)
+    )
 
 
 def expect_in_source(text, needle, client, what):
