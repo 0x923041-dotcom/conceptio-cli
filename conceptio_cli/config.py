@@ -1,0 +1,101 @@
+"""Local configuration for the Conceptio CLI.
+
+Stored at ``~/.conceptio/config.json``. Holds the API base, the optional Pro
+license key, and user preferences. This tool is fully self-contained and
+public-facing — it talks only to the public ``https://www.conceptio.app``
+endpoint and stores its own local config.
+"""
+
+import json
+import os
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+CONFIG_DIR = Path.home() / ".conceptio"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+DEFAULT_API_BASE = "https://www.conceptio.app"
+
+DEFAULT_CONFIG = {
+    "api_base": DEFAULT_API_BASE,
+    "license_key": "",
+    "api_key": "",
+    "bearer_token": "",
+    "default_limit": 10,
+    "default_citation_format": "bibtex",
+}
+
+
+def load_config() -> Dict[str, Any]:
+    """Load config, merging any saved values over the defaults."""
+    if not CONFIG_FILE.exists():
+        return DEFAULT_CONFIG.copy()
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        merged = DEFAULT_CONFIG.copy()
+        if isinstance(data, dict):
+            merged.update(data)
+        return merged
+    except Exception:
+        return DEFAULT_CONFIG.copy()
+
+
+def save_config(cfg: Dict[str, Any]) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+
+
+def set_license_key(key: str) -> None:
+    cfg = load_config()
+    cfg["license_key"] = key.strip()
+    cfg["api_key"] = ""
+    save_config(cfg)
+
+
+def get_license_key() -> str:
+    return str(load_config().get("license_key", "") or "")
+
+
+def set_api_key(key: str) -> None:
+    """Save a self-hosted API key (ckey_live_...). Setting one clears any
+    stale license key so a client never sends two credentials at once."""
+    cfg = load_config()
+    cfg["api_key"] = key.strip()
+    cfg["license_key"] = ""
+    save_config(cfg)
+
+
+def get_api_key() -> str:
+    return str(load_config().get("api_key", "") or "")
+
+
+def has_credential(cfg: Optional[Dict[str, Any]] = None) -> bool:
+    """Can this process authenticate? Config file **or** environment.
+
+    One predicate, because there are two callers who must never disagree: the
+    CLI's own gate (`cli.require_auth`) and the MCP server's per-call check.
+    They did disagree — the gate accepted `CONCEPTIO_API_KEY`, then every tool
+    call in the running server answered "Authentication required", because that
+    check read only the config file. Env credentials are precisely how a host
+    process (an editor, an MCP client, CI) supplies a key without writing to
+    `~/.conceptio/config.json`, so the mismatch broke the documented path.
+
+    Pass ``cfg`` when the caller already loaded it, so the file is read once.
+    """
+    values = load_config() if cfg is None else cfg
+    for key in ("api_key", "license_key", "bearer_token"):
+        if str(values.get(key) or "").strip():
+            return True
+    for name in ("CONCEPTIO_API_KEY", "CONCEPTIO_LICENSE_KEY", "CONCEPTIO_BEARER_TOKEN"):
+        if os.environ.get(name, "").strip():
+            return True
+    return False
+
+
+AUTH_REQUIRED_HINT = (
+    "Authentication required — save an API key before searching.\n"
+    "  1. Sign in at https://www.conceptio.app\n"
+    "  2. Create a key on your profile (Free, Dev, Pro, or Enterprise)\n"
+    "  3. Run: conceptio auth ckey_live_..."
+)
