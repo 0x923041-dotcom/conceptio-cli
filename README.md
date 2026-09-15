@@ -334,6 +334,13 @@ invocation they make, with the file it came from:
 If you change a subcommand or a flag, one of the two will fail and name the
 client. Add a row when a client gains a call.
 
+The README is a client too. `tests/test_readme_contract.py` extracts every
+invocation from the code blocks above and parses it against the same grammar,
+so a renamed flag cannot leave the documentation teaching a command that exits
+with a usage error. Shell constructs (a pipe, a redirect) are skipped by an
+explicit rule rather than by exception, and the test fails if it stops finding
+the examples — an extractor that quietly matches nothing proves nothing.
+
 ---
 
 ## License
