@@ -41,15 +41,38 @@ def load_config() -> Dict[str, Any]:
 
 
 def save_config(cfg: Dict[str, Any]) -> None:
+    """Write the config, kept readable only by its owner.
+
+    The file holds a long-lived credential (``ckey_live_…``), so it is created
+    0600 inside a 0700 directory rather than at the process umask — the usual
+    0644 leaves the key readable by every account on a shared machine, and no
+    amount of hashing server-side makes a copied key stop working. The trailing
+    ``chmod`` is not redundant: ``O_CREAT``'s mode applies only to a file it
+    actually creates, so a config written by an earlier version of the CLI keeps
+    its loose mode until something repairs it.
+
+    Windows has no POSIX mode bits (``os.chmod`` there only toggles the
+    read-only attribute), so the modes are applied on POSIX only.
+    """
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+    payload = json.dumps(cfg, indent=2)
+    fd = os.open(str(CONFIG_FILE), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(payload)
+    if os.name == "posix":
+        os.chmod(CONFIG_DIR, 0o700)
+        os.chmod(CONFIG_FILE, 0o600)
 
 
 def set_license_key(key: str) -> None:
     cfg = load_config()
     cfg["license_key"] = key.strip()
     cfg["api_key"] = ""
+    # A bearer token outranks both key kinds, so a stale one left behind would
+    # keep winning over the key just saved (`auth` would report the key as
+    # accepted, then every later command would send the dead token). Nothing in
+    # this CLI ever writes a bearer token to disk; it is handed in per-run.
+    cfg["bearer_token"] = ""
     save_config(cfg)
 
 
@@ -59,10 +82,12 @@ def get_license_key() -> str:
 
 def set_api_key(key: str) -> None:
     """Save a self-hosted API key (ckey_live_...). Setting one clears any
-    stale license key so a client never sends two credentials at once."""
+    stale license key or bearer token so the key just saved is the one every
+    later command actually sends."""
     cfg = load_config()
     cfg["api_key"] = key.strip()
     cfg["license_key"] = ""
+    cfg["bearer_token"] = ""
     save_config(cfg)
 
 

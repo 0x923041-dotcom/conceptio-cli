@@ -3,6 +3,42 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## Unreleased
+
+### Fixed
+
+- **`proof`'s human summary read a bundle shape no server sends.** The evidence
+  bundle nests the document's identity under `document` and the matched passage
+  under `passage` (`_proof_bundle`, `conceptio/api.py`), but the summary read the
+  top level — so against the real API it printed `Source —` and dropped the
+  passage a `proof -q` was fetched for. Both the offline fixture and the shared
+  loopback stub served a flat spelling the API never emits, which is why every
+  check stayed green. `_print_proof_summary` now reads the nested bundle (the
+  flat spelling still renders, so an older server is unaffected) and states the
+  retrieval verdict — `access_level` with `full_text_available` — which the
+  summary never showed at all. An open-access row whose extraction is empty now
+  reads `Full text (nothing extracted for this row)` instead of looking like a
+  licence limit.
+- **The shared stub served a proof shape the API does not emit.**
+  `conceptio-nvim/test/stub_api.py` returns the production nesting, and
+  `tests/live_check.py` asserts the *rendered rows* — the source label, the `-q`
+  passage in the human summary, and `passage.snippet` in the JSON bundle — rather
+  than the header's presence. Negative control: the previous renderer fails that
+  check with `proof: the source label never rendered: Proof bundle: document
+  2844`.
+- **`~/.conceptio/config.json` was written world-readable.** The file holds a
+  long-lived `ckey_live_…`; written at the process umask it is 0644, readable by
+  every account on a shared machine, and a copied key keeps working because the
+  server only ever sees its hash. It is now created `0600` inside a `0700`
+  directory on POSIX, and a loose file left by an earlier version is repaired on
+  the next save (measured on Linux: `file=644 dir=775` → `file=600 dir=700`).
+- **A saved bearer token outranked the key a user had just saved.** `_headers`
+  prefers a bearer token, so one left in the config file kept winning after
+  `auth` reported the new key as accepted. Saving an API or licence key now
+  clears a stored bearer token, and the environment note names
+  `CONCEPTIO_BEARER_TOKEN` — the variable most able to shadow the key being
+  saved.
+
 ## 0.3.3
 
 ### Added

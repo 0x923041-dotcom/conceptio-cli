@@ -578,12 +578,26 @@ def define_checks(live, main, running, expired, connectors, work):
         expect("Proof bundle: document 2844" in proc.stdout,
                "proof: the bundle summary is missing: %s" % proc.stdout.strip()[:200])
         expect("sha256:" in proc.stdout, "proof: no content hash was rendered")
+        # The bundle nests the document's identity under `document`, so a summary
+        # reading the top level prints `Source —` while the header still looks
+        # right. Assert the *rendered row*, not the presence of the header.
+        expect("IETF" in proc.stdout,
+               "proof: the source label never rendered: %s" % proc.stdout.strip()[:200])
         expect(main.since(mark, "GET /api/document/2844/proof"),
                "proof: the stub saw no proof GET")
-        proc = live.run("proof", "2844", "-q", "quantum", "--json", base=main.base)
+        # The passage lives at `passage.snippet`. Both directions are asserted:
+        # the human summary has to show the passage the reader asked for, and
+        # the JSON bundle has to carry it where the API actually puts it.
+        proc = live.run("proof", "2844", "-q", "quantum", base=main.base)
         exit_is(proc, 0, "proof -q")
-        expect("quantum" in str(stdout_json(proc, "proof -q").get("snippet")),
-               "proof -q: the passage query did not reach the bundle")
+        expect("Snippet" in proc.stdout and "quantum" in proc.stdout,
+               "proof -q: the passage never rendered in the human summary: %s"
+               % proc.stdout.strip()[:200])
+        proc = live.run("proof", "2844", "-q", "quantum", "--json", base=main.base)
+        exit_is(proc, 0, "proof -q --json")
+        passage = (stdout_json(proc, "proof -q") or {}).get("passage") or {}
+        expect("quantum" in str(passage.get("snippet")),
+               "proof -q --json: the passage query did not reach the bundle")
 
     @check("proof — the evidence hash stays on its label's line at 80 columns")
     def _proof_hash_line():

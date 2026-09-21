@@ -5,7 +5,7 @@ import json
 import os
 import sys
 import webbrowser
-from typing import Optional
+from typing import Any, Optional
 
 from . import __version__
 from .client import ConceptioClient, ConceptioError, build_obsidian_uri
@@ -137,30 +137,92 @@ def _default_output_name(target: str) -> str:
     return tail
 
 
+# The server's access levels, rendered with the same short words the editor
+# clients use, so one vocabulary reaches a reader across the CLI and the
+# extensions.
+_ACCESS_LABELS = {
+    "public_full_text": "Full text",
+    "open_access": "Open access",
+    "metadata_only": "Metadata only",
+}
+
+
+def _access_line(access_level: Any, full_text_available: Any) -> str:
+    """One line answering `can this caller actually have the text?`
+
+    ``access_level`` is the server's licence verdict for the source;
+    ``full_text_available`` is what this caller may receive for it, recomputed
+    against that verdict — so a metadata-only source reports ``False`` even when
+    its row holds extracted text. When the two disagree the row's own text is
+    missing (a scanned PDF) while the licence would have permitted it, which is
+    exactly the case a reader would otherwise misread as a licence problem.
+    """
+    level = str(access_level or "").strip()
+    label = _ACCESS_LABELS.get(level, level or "—")
+    if full_text_available is False and level in ("public_full_text", "open_access"):
+        return f"{label} (nothing extracted for this row)"
+    return label
+
+
 def _print_proof_summary(data: dict, doc_id: int) -> None:
-    """Render the proof bundle's key fields for a human reader."""
-    console.print(f"[bold]Proof bundle:[/] [cyan]document {doc_id}[/]")
-    source = data.get("source") or "—"
-    source_label = data.get("source_label") or source
-    license = data.get("license") or "—"
-    content_hash = data.get("content_hash") or "—"
+    """Render the proof bundle's key fields for a human reader.
+
+    The bundle is nested: the server keeps the document's identity under
+    ``document`` and the matched passage under ``passage``.
+
+      {document: {id, title, author, source, source_label, category, url,
+                  source_id},
+       retrieved_at, content_hash, license, access_level, publisher,
+       authority_score, full_text_available, citation,
+       passage: {snippet, context}, version_status, jurisdiction,
+       standard_status}
+
+    Reading only the top level (what this did) printed ``Source —`` and dropped
+    the passage a ``-q`` proof was fetched for — a summary that looks complete
+    and withholds the one thing the reader asked for. The flat spelling stays
+    accepted so a bundle from an older server keeps rendering.
+    """
+    document = data.get("document") if isinstance(data.get("document"), dict) else {}
+    passage = data.get("passage") if isinstance(data.get("passage"), dict) else {}
+
+    def text(*candidates: object) -> str:
+        """First non-empty candidate, else an em dash."""
+        for candidate in candidates:
+            if candidate is not None and str(candidate).strip():
+                return str(candidate)
+        return "—"
+
+    source_label = text(
+        document.get("source_label"), data.get("source_label"),
+        document.get("source"), data.get("source"),
+    )
+    license_name = text(data.get("license"), document.get("license"))
+    content_hash = text(data.get("content_hash"))
     authority = data.get("authority_score", data.get("authority"))
-    retrieved = data.get("retrieved_at") or data.get("retrieved") or "—"
+    retrieved = text(data.get("retrieved_at"), data.get("retrieved"))
     version = data.get("version_status") or data.get("version") or ""
+    access = _access_line(data.get("access_level", document.get("access_level")),
+                          data.get("full_text_available"))
+    snippet = text(passage.get("snippet"), data.get("snippet"), data.get("matched_snippet"))
+    context = text(passage.get("context"))
+
+    console.print(f"[bold]Proof bundle:[/] [cyan]document {doc_id}[/]")
     console.print(f"  [dim]Source[/]     {source_label}")
-    console.print(f"  [dim]License[/]    {license}")
+    console.print(f"  [dim]License[/]    {license_name}")
     # The hash is 71 characters; with the label it overflows an 80-column
     # terminal, and a wrapped value loses its indentation — the one line a
     # reader copies to verify the bundle arrives split in two. Let it overflow
     # instead of folding.
     console.print(f"  [dim]SHA-256[/]    {content_hash}", no_wrap=True)
+    console.print(f"  [dim]Access[/]     {access}")
     console.print(f"  [dim]Authority[/]  {authority if authority is not None else '—'}")
     console.print(f"  [dim]Retrieved[/]  {retrieved}")
     if version:
         console.print(f"  [dim]Version[/]    {version}")
-    snippet = data.get("snippet") or data.get("matched_snippet") or ""
-    if snippet:
+    if snippet != "—":
         console.print(f"  [dim]Snippet[/]    {snippet}")
+    if context != "—":
+        console.print(f"  [dim]Context[/]    {context}")
 
 
 def handle_download(client: ConceptioClient, target: str, output: Optional[str]) -> int:
@@ -357,11 +419,20 @@ def handle_auth(key: str) -> int:
         console.print(f"[bold green][OK][/] License key saved to ~/.conceptio/config.json")
     # An exported variable wins over the file, so a user who just saved a key
     # can be shadowed by one they forgot about — say so instead of leaving them
-    # to wonder why `conceptio quota` still reports the old tier.
-    shadow = "CONCEPTIO_API_KEY" if is_api else "CONCEPTIO_LICENSE_KEY"
-    if os.environ.get(shadow, "").strip() and os.environ.get(shadow, "").strip() != key:
-        console.print(f"[yellow]Note:[/] {shadow} is set in this environment and takes "
-                      "precedence over the saved key for commands you run here.")
+    # to wonder why `conceptio quota` still reports the old tier. The bearer
+    # token is named too: it outranks both key kinds, so it is the variable most
+    # able to shadow the key being saved right now.
+    shadows = [
+        name for name in (
+            "CONCEPTIO_BEARER_TOKEN",
+            "CONCEPTIO_API_KEY" if is_api else "CONCEPTIO_LICENSE_KEY",
+        )
+        if os.environ.get(name, "").strip() and os.environ.get(name, "").strip() != key
+    ]
+    if shadows:
+        console.print(f"[yellow]Note:[/] {' and '.join(shadows)} "
+                      f"{'is' if len(shadows) == 1 else 'are'} set in this environment and "
+                      "take precedence over the saved key for commands you run here.")
     # Validate against the live API so the user knows immediately if it is accepted.
     # The key just supplied is the subject of the test — asking a client that
     # resolves environment-first would validate whatever it found there instead.

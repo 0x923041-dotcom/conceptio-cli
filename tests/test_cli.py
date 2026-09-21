@@ -619,6 +619,102 @@ def test_proof_hash_stays_on_the_label_line(capsys, monkeypatch):
     assert "sha256:" in lines[0], "the hash folded onto its own line: %r" % lines[0]
 
 
+# The bundle the server actually returns. Conceptio's `_proof_bundle`
+# (conceptio/api.py) nests the document's identity under `document` and the
+# matched passage under `passage`; the flat spelling the FakeClient above serves
+# is not a shape any server emits, which is exactly why the summary's wrong keys
+# stayed invisible. Every field here is copied from that function.
+PRODUCTION_PROOF_BUNDLE = {
+    "document": {
+        "id": 7288,
+        "title": "Zero Trust Architecture",
+        "author": "Joint Task Force",
+        "source": "nist",
+        "source_label": "NIST",
+        "category": "Computer Science & Tech",
+        "url": "https://example.org/sp-800-207",
+        "source_id": "SP 800-207",
+    },
+    "retrieved_at": "2026-09-15T00:00:00Z",
+    "content_hash": "ab" * 32,
+    "license": "Public Domain",
+    "access_level": "open_access",
+    "publisher": None,
+    "authority_score": 0.9,
+    "full_text_available": True,
+    "citation": {"bibtex": "@misc{x}", "apa": "JTF (2020).", "ris": "TY  - STD"},
+    "passage": {"snippet": "no implicit trust", "context": "…surrounding context…"},
+    "version_status": None,
+    "jurisdiction": None,
+    "standard_status": None,
+}
+
+
+def _proof_row(output: str, label: str):
+    """The rendered `<label> value` row, or None when the row is absent."""
+    for line in output.splitlines():
+        if line.strip().startswith(label):
+            return line
+    return None
+
+
+def _client_returning(bundle: dict):
+    class ProofClient(FakeClient):
+        def get_proof(self, doc_id, query=None):
+            return bundle
+
+    return ProofClient
+
+
+def test_proof_summary_reads_the_production_bundle_shape(capsys, monkeypatch):
+    """The real bundle nests `document` and `passage`, so a summary that reads
+    the top level prints `Source —` and drops the passage a `-q` proof exists to
+    deliver — complete-looking and withholding the one thing that was asked for."""
+    monkeypatch.setattr(cli_mod, "ConceptioClient", _client_returning(dict(PRODUCTION_PROOF_BUNDLE)))
+    assert main(["proof", "7288", "-q", "implicit"]) == 0
+    out = capsys.readouterr().out
+
+    source_row = _proof_row(out, "Source")
+    assert source_row and "NIST" in source_row, f"Source row lost the document's label: {out!r}"
+    license_row = _proof_row(out, "License")
+    assert license_row and "Public Domain" in license_row
+    assert _proof_row(out, "SHA-256") and "ab" * 32 in _proof_row(out, "SHA-256")
+    snippet_row = _proof_row(out, "Snippet")
+    assert snippet_row and "no implicit trust" in snippet_row, f"the passage never rendered: {out!r}"
+    assert _proof_row(out, "Context"), f"the passage context never rendered: {out!r}"
+
+
+def test_proof_summary_answers_whether_the_text_is_available(capsys, monkeypatch):
+    """`access_level` is the licence verdict, and it is the bundle's headline
+    answer for a retrieval consumer — the summary never used to state it."""
+    bundle = dict(PRODUCTION_PROOF_BUNDLE, access_level="metadata_only", full_text_available=False)
+    monkeypatch.setattr(cli_mod, "ConceptioClient", _client_returning(bundle))
+    assert main(["proof", "7288"]) == 0
+    assert "Metadata only" in (_proof_row(capsys.readouterr().out, "Access") or "")
+
+
+def test_proof_summary_separates_a_licence_limit_from_missing_text(capsys, monkeypatch):
+    """An open-access row whose extraction is empty is not a licence problem,
+    and reading it as one sends a reader to the wrong fix."""
+    bundle = dict(PRODUCTION_PROOF_BUNDLE, access_level="public_full_text", full_text_available=False)
+    monkeypatch.setattr(cli_mod, "ConceptioClient", _client_returning(bundle))
+    assert main(["proof", "7288"]) == 0
+    row = _proof_row(capsys.readouterr().out, "Access") or ""
+    assert "Full text" in row and "nothing extracted" in row, row
+
+
+def test_proof_summary_accepts_the_flat_bundle_an_older_server_sends(capsys, monkeypatch):
+    """The pre-nesting spelling keeps rendering, so an older server's bundle
+    does not go blank just because the shape moved."""
+    flat = {"doc_id": 7, "source_label": "IETF", "license": "Open Access",
+            "snippet": "legacy passage"}
+    monkeypatch.setattr(cli_mod, "ConceptioClient", _client_returning(flat))
+    assert main(["proof", "7"]) == 0
+    out = capsys.readouterr().out
+    assert "IETF" in (_proof_row(out, "Source") or "")
+    assert "legacy passage" in (_proof_row(out, "Snippet") or "")
+
+
 def test_license_key_satisfies_gate(capsys, monkeypatch):
     monkeypatch.setattr(
         cli_mod, "load_config",
