@@ -327,6 +327,34 @@ def _search_no_results(account):
     )
 
 
+@check("an empty query fails loudly instead of reading as an empty result set")
+def _empty_query_is_an_error(account):
+    """The client answers a request it cannot serve with a payload, not a raise.
+
+    So the CLI's own gate — not the server's — decides whether that payload is a
+    result or an error, and it has to be the error: a machine caller (an editor,
+    an agent bridge) that saw exit 0 with `results: []` would report "no
+    matches" for a query that never ran. Measured here because reading the
+    handler is not the same as watching the shipped binary answer.
+    """
+    proc = account.run("search", "", "--json")
+    assert proc.returncode != 0, "an empty query exited 0 — indistinguishable from an empty result set"
+    out = combined(proc)
+    assert "Traceback" not in out, "an empty query produced a traceback:\n%s" % out[:300]
+    # The reason, not a particular wording: the shipped binary refuses at the
+    # argument layer (`A query or --batch JSON file is required.`) before the
+    # client's own soft error can fire, and pinning the string would have called
+    # a *better* refusal a failure — the first draft of this check did exactly
+    # that, asserting the message instead of the promise.
+    assert "[ERR]" in out and len(out.strip()) > len("[ERR]"), (
+        "the refusal does not name a reason:\n%s" % out[:300]
+    )
+    assert not (proc.stdout or "").strip().startswith("{"), (
+        "an empty query put a JSON payload on stdout; a caller reading it would see success:\n%s"
+        % (proc.stdout or "")[:200]
+    )
+
+
 @check("--json means the same before the subcommand as after it")
 def _global_json_equals_local(account):
     after = Account.json_of(account.json_run("search", "search", "zero trust", "--limit", "2", "--json"),
