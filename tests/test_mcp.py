@@ -291,3 +291,36 @@ def test_initialize_keyless_still_answers(fake_client, monkeypatch):
     responses = _run([json.dumps({"jsonrpc": "2.0", "id": 12, "method": "initialize"})],
                      fake_client)
     assert responses[0]["result"]["serverInfo"]["name"] == "conceptio-mcp"
+
+
+def test_a_soft_error_payload_is_marked_as_a_tool_error(fake_client, monkeypatch):
+    """The client answers what it cannot serve with a payload, not by raising.
+
+    `search("")` returns `{"error": "Empty search query.", "results": []}`, and a
+    429 returns its detail the same way, because the CLI prints that payload for
+    a human. Wrapped in an ordinary tool result, every MCP host rendered the
+    failure as a success — measured live 2026-09-21: a `conceptio_search` call
+    with no arguments came back with `isError` absent, so the only signal was a
+    key inside the text. The payload still carries the message; the flag is what
+    a host acts on.
+    """
+
+    class SoftErrorClient(FakeMCPClient):
+        def search(self, query, limit=10, category=None, license=None):
+            return {"error": "Empty search query.", "results": []}
+
+    monkeypatch.setattr(mcp_mod, "ConceptioClient", SoftErrorClient)
+    req = {"jsonrpc": "2.0", "id": 30, "method": "tools/call",
+           "params": {"name": "conceptio_search", "arguments": {"query": ""}}}
+    responses = _run([json.dumps(req)], fake_client)
+    result = responses[0]["result"]
+    assert result.get("isError") is True, "a soft error was returned as a successful tool call"
+    assert "Empty search query." in result["content"][0]["text"]
+
+
+def test_a_normal_payload_is_not_marked_as_an_error(fake_client):
+    req = {"jsonrpc": "2.0", "id": 31, "method": "tools/call",
+           "params": {"name": "conceptio_search", "arguments": {"query": "attention"}}}
+    responses = _run([json.dumps(req)], fake_client)
+    result = responses[0]["result"]
+    assert "isError" not in result, "a successful tool call was flagged as an error"

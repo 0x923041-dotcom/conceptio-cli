@@ -60,12 +60,12 @@ conceptio search-job <job-id> --wait --json                 # poll until done, t
 
 # Resolve a known identifier straight to its document(s)
 conceptio resolve "RFC 2119"
-conceptio resolve "doi:10.1145/3290605.3300333"
+conceptio resolve "doi:10.1109/access.2020.2986772"
 conceptio resolve "2604.08499"                              # arXiv
 conceptio resolve "PMID 41961061"                           # PubMed
 conceptio resolve "PMC10601397"                             # PubMed Central
 conceptio resolve "NIST FIPS 199"
-conceptio resolve "410 U.S. 113"                            # US case citation (Supreme Court)
+conceptio resolve "347 U.S. 483"                            # US case citation (Supreme Court)
 conceptio resolve "20-5364"                                 # federal docket
 conceptio resolve "RFC 2119" --json
 
@@ -139,6 +139,13 @@ response (`kind: rfc | doi | arxiv | pmid | pmcid | nist | w3c | case` plus
 fallback `null` for plain text). Unrecognised identifiers degrade to a regular
 search so the command never fails silently.
 
+The `kind` describes the **identifier**, not the archive: a well-formed DOI this
+archive does not hold answers with `kind: "doi"`, `total: 0` and an empty
+`results` list, which is a correct empty answer rather than a failure. Every
+example above resolves to at least one document today — the suite that drives
+the shipped CLI against the live API asserts exactly that, so an example can
+only rot if that check is skipped.
+
 ---
 
 ## Model Context Protocol (MCP)
@@ -152,7 +159,7 @@ The `conceptio mcp` command starts a stdio JSON-RPC MCP server. It is dependency
 |------|-------------|
 | `conceptio_search` | Search the archive (`query`, optional `limit` 1–20, optional `category`). Returns structured results with titles, authors, years, source, snippet, and `direct_pdf_url` when available. |
 | `conceptio_search_batch` | Run multiple searches in one call — queue 1–50 as a background job and return an opaque handle (`sync` omitted/false), or set `sync: true` to run 1–10 immediately and return all results in one response. |
-| `conceptio_resolve` | Resolve a known identifier — RFC (`RFC 2119`), DOI (`doi:10.1145/3290605.3300333`), arXiv (`2604.08499`), PubMed ID (`PMID 41961061`), PubMed Central ID (`PMC10601397`), NIST/FIPS designation (`NIST FIPS 199`), W3C spec shortname (`w3c_digital-credentials`), or US legal citation / docket (`410 U.S. 113`, `20-5364`) — straight to its document(s). Unrecognised identifiers fall back to a text search. |
+| `conceptio_resolve` | Resolve a known identifier — RFC (`RFC 2119`), DOI (`doi:10.1109/access.2020.2986772`), arXiv (`2604.08499`), PubMed ID (`PMID 41961061`), PubMed Central ID (`PMC10601397`), NIST/FIPS designation (`NIST FIPS 199`), W3C spec shortname (`w3c_digital-credentials`), or US legal citation / docket (`347 U.S. 483`, `20-5364`) — straight to its document(s). Unrecognised identifiers fall back to a text search. |
 | `conceptio_download_pdf` | Download the original open-access PDF for a Conceptio document ID or a direct PDF URL to a local path. |
 | `conceptio_get_citation` | Get a citation for a document ID in any of 11 formats (BibTeX, APA, MLA, Chicago, IEEE, Harvard, RIS, Bluebook, OSCOLA, ISO 690, ANSI Z39). |
 | `conceptio_get_document` | Full metadata (title, author, source, category, license, year, language, URL, direct PDF URL, description) for a document ID. |

@@ -63,10 +63,10 @@ TOOLS: List[Dict[str, Any]] = [
         "name": "conceptio_resolve",
         "description": (
             "Resolve a known identifier straight to its document(s) in the archive: an RFC number "
-            "('RFC 2119'), a DOI ('doi:10.1145/3290605.3300333'), an arXiv ID ('2604.08499'), a "
+            "('RFC 2119'), a DOI ('doi:10.1109/access.2020.2986772'), an arXiv ID ('2604.08499'), a "
             "PubMed ID ('PMID 41961061'), a PubMed Central ID ('PMC10601397'), a NIST/FIPS "
             "designation ('NIST FIPS 199'), a W3C spec shortname ('w3c_digital-credentials'), "
-            "or a US legal citation / docket ('410 U.S. 113', '20-5364'). "
+            "or a US legal citation / docket ('347 U.S. 483', '20-5364'). "
             "Unrecognized identifiers fall back to a text search. Use this when an agent has a "
             "concrete citation/reference it wants to locate precisely."
         ),
@@ -213,6 +213,23 @@ def _workspace_output_path(raw: str) -> str:
     return str(resolved)
 
 
+def _payload_result(data: Dict[str, Any]) -> Dict[str, Any]:
+    """A tool result, marked as an error when the payload carries one.
+
+    The client answers a request it could not serve with a soft error —
+    ``{"error": "Empty search query.", "results": []}``, or a 429's detail —
+    rather than raising, because the CLI renders that payload for a human. A
+    tool result that says nothing about it therefore told every MCP host the
+    call had *succeeded*: an empty query, or a rate-limited one, came back as a
+    result the host renders like any other. The MCP convention is ``isError``
+    on the result, which is what a host actually reads.
+    """
+    result: Dict[str, Any] = {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
+    if isinstance(data, dict) and data.get("error"):
+        result["isError"] = True
+    return result
+
+
 def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a tool call. Returns {content, isError?}."""
     # Defense in depth: the `mcp` entry point already refuses keyless startup,
@@ -234,11 +251,11 @@ def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Di
             args.get("query", ""),
             **search_args,
         ))
-        return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
+        return _payload_result(data)
 
     if name == "conceptio_resolve":
         data = client.resolve(args.get("id", ""), limit=args.get("limit", 10))
-        return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
+        return _payload_result(data)
 
     if name == "conceptio_download_pdf":
         target = str(args.get("doc_id_or_url", "")).strip()
@@ -265,7 +282,7 @@ def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Di
             data = client.batch_search(queries)
         else:
             data = client.submit_search_job(queries)
-        return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
+        return _payload_result(data)
 
     if name == "conceptio_connectors_send":
         connector = str(args.get("connector") or "").strip().lower()
@@ -273,7 +290,7 @@ def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Di
         if connector not in {"zotero", "obsidian"} or doc_id < 1:
             raise ConceptioError("connector must be zotero or obsidian and doc_id must be positive.")
         data = client.send_connector(connector, doc_id, vault=str(args.get("vault") or ""))
-        return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
+        return _payload_result(data)
 
     if name == "conceptio_connectors_send_all":
         connector = str(args.get("connector") or "zotero").strip().lower()
@@ -281,11 +298,11 @@ def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Di
         if connector != "zotero" or not isinstance(doc_ids, list):
             raise ConceptioError("Bulk connector saves require connector=zotero and a doc_ids array.")
         data = client.send_zotero_all(doc_ids)
-        return {"content": _text(json.dumps(data, indent=2, ensure_ascii=True))}
+        return _payload_result(data)
 
     if name == "conceptio_get_document":
         doc = client.get_document(int(args.get("doc_id", 0)))
-        return {"content": _text(json.dumps(doc, indent=2, ensure_ascii=True))}
+        return _payload_result(doc)
 
     return {"content": _text(f"Unknown tool: {name}"), "isError": True}
 

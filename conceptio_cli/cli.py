@@ -519,7 +519,7 @@ def build_parser() -> argparse.ArgumentParser:
         "resolve",
         help="Resolve an identifier (RFC 2119, doi:10.xxxx/..., 2604.08499, PMID 41961061, PMC10601397, NIST FIPS 199, w3c_..., US case citation) to a document",
     )
-    sp.add_argument("id", help="Identifier to resolve, e.g. 'RFC 2119', 'doi:10.1145/3290605.3300333', or '410 U.S. 113'")
+    sp.add_argument("id", help="Identifier to resolve, e.g. 'RFC 2119', 'doi:10.1109/access.2020.2986772', or '347 U.S. 483'")
     sp.add_argument("-l", "--limit", type=int, default=10, help="Max results (default: 10)")
     sp.add_argument("--json", action="store_true", help="Output raw JSON")
 
