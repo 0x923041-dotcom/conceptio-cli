@@ -485,8 +485,8 @@ def build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="conceptio",
-        description="Conceptio — the document retrieval layer for AI agents. Search the "
-                    "open-access archive of papers, standards, textbooks and legal documents with "
+        description="Conceptio — the document retrieval layer for AI agents. Search 1M+ "
+                    "open-access documents (papers, standards, textbooks, case law) with "
                     "license-aware access, export citations, and download PDFs. Requires an API key "
                     "(`conceptio auth`) — sign in at https://www.conceptio.app to get one. Also runs "
                     "an MCP server so agents can query the archive directly.",

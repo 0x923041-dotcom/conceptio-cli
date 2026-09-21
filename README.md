@@ -1,8 +1,8 @@
 # conceptio-search
 
-**Search the open-access archive — papers, standards, textbooks, and legal documents — right from your terminal or your AI agent.**
+**Search 1M+ open-access documents — papers, standards, textbooks, and case law — right from your terminal or your AI agent.**
 
-`conceptio-search` is a CLI and [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for the [Conceptio Open Knowledge Archive](https://conceptio.app). Every source in the archive is open access or public domain. The CLI authenticates with an API key: sign in once, save the key, search from anywhere.
+`conceptio-search` is a CLI and [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for the [Conceptio Open Knowledge Archive](https://conceptio.app) — 1M+ open-access documents from 500+ living sources, indexed daily. Every source is open access or public domain. The CLI authenticates with an API key: sign in once, save the key, search from anywhere.
 
 - **For humans** — search, export citations in 11 formats (BibTeX, APA, MLA, Chicago, IEEE, Harvard, RIS, Bluebook, OSCOLA, ISO 690, ANSI Z39), and download PDFs to disk with one command.
 - **For AI agents** — a stdio MCP server with eight tools, so Claude, Cursor, Windsurf, OpenCode, or any MCP client can search, queue batch searches, resolve identifiers (RFC, DOI, arXiv, PMID, PMCID, NIST/FIPS, W3C, US case citation), save PDFs into your workspace, and hand a document to Zotero or Obsidian.
