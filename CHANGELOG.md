@@ -3,6 +3,41 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## 0.3.5
+
+### Added
+
+- **An authorised live check — `tests/live_account_check.py`.** The suite already
+  had two live harnesses and they are deliberate opposites: `live_check.py`
+  forces every call onto a loopback stub (so it cannot see the deployed API
+  move), and `live_prod_check.py` holds a placeholder key (so every path it
+  exercises is a refusal). Nothing asserted what the CLI does when everything
+  *works*, with a real credential: 33 checks now cover the JSON a machine caller
+  decodes, all 11 citation formats, a PDF that is a whole PDF, the MCP server
+  answering a real query, and `--json` stdout that is exactly one JSON document.
+  It refuses to run without `--yes` and refuses to report anything unless the
+  credential it resolves is not the public tier.
+
+### Fixed
+
+- **An MCP tool call whose payload carried a soft error was returned as a
+  success.** The client answers what it cannot serve with a payload — an empty
+  query, or a 429's detail — rather than raising, because the CLI prints that
+  payload for a human. A host acts on `isError`, which was absent, so the only
+  signal was a key inside the text. Measured against the live server.
+- **The citation examples in the help text, the README and the MCP tool
+  description pointed at identifiers the archive does not hold.**
+  `doi:10.1145/3290605.3300333` and `410 U.S. 113` both resolve with the right
+  `kind` and an empty result list, so copying the front door's own example read
+  like a broken command. Every example is now one that resolves, the live check
+  runs the documented examples verbatim, and the Resolve section states what a
+  well-formed identifier the archive does not hold actually answers.
+
+### Changed
+
+- Every surface this package ships now states the corpus size — *1M+ open-access
+  documents* — in `--help`, the README and the package summary PyPI serves.
+
 ## 0.3.4
 
 ### Fixed
