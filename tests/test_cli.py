@@ -703,6 +703,19 @@ def test_proof_summary_separates_a_licence_limit_from_missing_text(capsys, monke
     assert "Full text" in row and "nothing extracted" in row, row
 
 
+def test_proof_summary_names_a_revision_instead_of_printing_the_object(capsys, monkeypatch):
+    """`version_status` is `null` until a row is revised and an object after, so
+    a summary that prints it raw leaks a dict repr on exactly the rows that
+    carry a revision."""
+    bundle = dict(PRODUCTION_PROOF_BUNDLE, version_status={
+        "current_since": "2026-09-07T15:15:31", "superseded_sha256": "abc123"})
+    monkeypatch.setattr(cli_mod, "ConceptioClient", _client_returning(bundle))
+    assert main(["proof", "7288"]) == 0
+    row = _proof_row(capsys.readouterr().out, "Version") or ""
+    assert "revised 2026-09-07T15:15:31" in row and "supersedes abc123" in row, row
+    assert "{" not in row, f"a dict repr leaked into the summary: {row!r}"
+
+
 def test_proof_summary_accepts_the_flat_bundle_an_older_server_sends(capsys, monkeypatch):
     """The pre-nesting spelling keeps rendering, so an older server's bundle
     does not go blank just because the shape moved."""

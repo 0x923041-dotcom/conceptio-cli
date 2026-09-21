@@ -164,6 +164,24 @@ def _access_line(access_level: Any, full_text_available: Any) -> str:
     return label
 
 
+def _revision_line(version: Any) -> str:
+    """``version_status`` is ``null`` until a row is revised, and an object once
+    it is (``{current_since, superseded_sha256}``). Printing the object raw
+    leaks a dict repr into a human summary, so every field is named.
+    """
+    if isinstance(version, dict):
+        since = str(version.get("current_since") or "").strip()
+        superseded = str(version.get("superseded_sha256") or "").strip()
+        parts = []
+        if since:
+            parts.append(f"revised {since}")
+        if superseded:
+            parts.append(f"supersedes {superseded[:16]}"
+                         + ("…" if len(superseded) > 16 else ""))
+        return " · ".join(parts)
+    return str(version or "").strip()
+
+
 def _print_proof_summary(data: dict, doc_id: int) -> None:
     """Render the proof bundle's key fields for a human reader.
 
@@ -200,7 +218,7 @@ def _print_proof_summary(data: dict, doc_id: int) -> None:
     content_hash = text(data.get("content_hash"))
     authority = data.get("authority_score", data.get("authority"))
     retrieved = text(data.get("retrieved_at"), data.get("retrieved"))
-    version = data.get("version_status") or data.get("version") or ""
+    version = _revision_line(data.get("version_status") or data.get("version") or "")
     access = _access_line(data.get("access_level", document.get("access_level")),
                           data.get("full_text_available"))
     snippet = text(passage.get("snippet"), data.get("snippet"), data.get("matched_snippet"))
