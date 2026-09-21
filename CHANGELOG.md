@@ -3,13 +3,13 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
-## Unreleased
+## 0.3.4
 
 ### Fixed
 
 - **`proof`'s human summary read a bundle shape no server sends.** The evidence
   bundle nests the document's identity under `document` and the matched passage
-  under `passage` (`_proof_bundle`, `conceptio/api.py`), but the summary read the
+  under `passage`, but the summary read the
   top level — so against the real API it printed `Source —` and dropped the
   passage a `proof -q` was fetched for. Both the offline fixture and the shared
   loopback stub served a flat spelling the API never emits, which is why every
