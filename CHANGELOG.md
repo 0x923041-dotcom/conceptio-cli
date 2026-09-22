@@ -3,7 +3,7 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
-## Unreleased
+## 0.3.6
 
 ### Added
 
