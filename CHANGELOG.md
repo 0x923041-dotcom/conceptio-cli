@@ -3,6 +3,24 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## Unreleased
+
+### Fixed
+
+- **The MCP server no longer claims a protocol revision it does not implement.**
+  `initialize` echoed the client's requested `protocolVersion` straight back, so
+  a client naming a modern revision (`2026-07-28`, the current one) was told it
+  was speaking that revision and then served handshake-era semantics — a
+  mislabel nothing in the exchange could detect. It now answers with the
+  requested version only when that version is inside the handshake band this
+  server is compatible with (`2024-11-05` … `2025-11-25`), and with
+  `2024-11-05` for anything outside it — which is what the revision we speak
+  requires: *"If the server supports the requested protocol version, it MUST
+  respond with the same version. Otherwise, the server MUST respond with another
+  protocol version it supports."* Deliberately not
+  `UnsupportedProtocolVersionError` (`-32022`): that is the **modern** contract,
+  and a handshake-era client has no fall-forward mechanism.
+
 ## 0.3.5
 
 ### Added

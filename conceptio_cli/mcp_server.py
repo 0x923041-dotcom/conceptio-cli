@@ -25,7 +25,43 @@ from .client import ConceptioClient, ConceptioError
 from .config import AUTH_REQUIRED_HINT, has_credential, load_config
 
 SERVER_NAME = "conceptio-mcp"
+
+#: The revision this server DECLARES — the one `/mcp.json` publishes.
 PROTOCOL_VERSION = "2024-11-05"
+
+#: The handshake-era revisions this server is compatible with, oldest first. In
+#: the 2026-07-28 vocabulary this is a **Legacy** server (it establishes a
+#: session with an `initialize` handshake), so the band ends at the last
+#: handshake revision, 2025-11-25. The wire subset we speak — `initialize`,
+#: `tools/list`, `tools/call`; no resources, prompts, sampling, elicitation,
+#: tasks or logging — is unchanged across the band, and a client uses only
+#: capabilities that were actually negotiated, so the band is the honest
+#: declaration rather than a courtesy.
+LEGACY_PROTOCOL_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
+
+
+def negotiate_protocol_version(requested: Optional[Any]) -> str:
+    """The revision to answer an `initialize` with (2025-11-25 Lifecycle).
+
+    "If the server supports the requested protocol version, it MUST respond with
+    the same version. Otherwise, the server MUST respond with another protocol
+    version it supports" — after which the client decides whether to continue.
+
+    So: echo a version inside the band, and answer **our own declared version**
+    for anything outside it. Never the requested one when it is unsupported,
+    which is what this did until 2026-09-22: a client asking for a modern
+    revision (`2026-07-28`) was told `2026-07-28` and then served legacy
+    semantics, so nothing in the exchange could tell it which era it was in.
+
+    Deliberately NOT an error: `UnsupportedProtocolVersionError` (`-32022`) is
+    the 2026-07-28 contract for a *modern* server, and a handshake-era client
+    has no fall-forward mechanism — answering with it would replace one
+    mislabelling with a louder one.
+    """
+    version = str(requested or "").strip()
+    if version in LEGACY_PROTOCOL_VERSIONS:
+        return version
+    return PROTOCOL_VERSION
 
 TOOLS: List[Dict[str, Any]] = [
     {
@@ -323,7 +359,7 @@ def run_mcp_server() -> int:
             if method == "initialize":
                 requested = (req.get("params") or {}).get("protocolVersion")
                 result = {
-                    "protocolVersion": requested or PROTOCOL_VERSION,
+                    "protocolVersion": negotiate_protocol_version(requested),
                     "capabilities": {"tools": {}},
                     "serverInfo": {"name": SERVER_NAME, "version": __version__},
                 }

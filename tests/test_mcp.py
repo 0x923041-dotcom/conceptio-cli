@@ -8,7 +8,12 @@ import pytest
 
 import conceptio_cli.mcp_server as mcp_mod
 from conceptio_cli.client import ConceptioError
-from conceptio_cli.mcp_server import TOOLS, _workspace_output_path, run_mcp_server
+from conceptio_cli.mcp_server import (
+    PROTOCOL_VERSION,
+    TOOLS,
+    _workspace_output_path,
+    run_mcp_server,
+)
 
 
 class FakeMCPClient:
@@ -82,6 +87,40 @@ def test_initialize_returns_server_info(fake_client):
     assert res["id"] == 1
     assert res["result"]["serverInfo"]["name"] == "conceptio-mcp"
     assert res["result"]["protocolVersion"] == "2024-11-05"
+
+
+def test_initialize_echoes_a_handshake_revision_it_supports(fake_client):
+    """The handshake's version rule: a version inside the supported band is
+    answered with the SAME version (2025-11-25 Lifecycle — "If the server
+    supports the requested protocol version, it MUST respond with the same
+    version"). Pinned at the newest handshake revision, so the band cannot
+    quietly shrink to the single value we happen to declare."""
+    for version in ("2025-03-26", "2025-06-18", "2025-11-25"):
+        responses = _run([json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                      "params": {"protocolVersion": version}})], fake_client)
+        assert responses[0]["result"]["protocolVersion"] == version
+
+
+def test_initialize_never_echoes_a_modern_revision(fake_client):
+    """Until 2026-09-22 this echoed whatever was asked for, so a client naming a
+    modern revision was TOLD it was speaking that revision and then served
+    legacy semantics — the mislabel with no way to detect it. The answer must be
+    a version we support; `UnsupportedProtocolVersionError` (`-32022`) is the
+    modern contract and would be a louder mislabel here, because a handshake-era
+    client has no fall-forward mechanism."""
+    for version in ("2026-07-28", "2027-01-01"):
+        responses = _run([json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                      "params": {"protocolVersion": version}})], fake_client)
+        result = responses[0]["result"]
+        assert result["protocolVersion"] == PROTOCOL_VERSION
+        assert result["protocolVersion"] != version
+        assert "error" not in responses[0], "a legacy client cannot fall forward"
+
+
+def test_initialize_answers_a_version_when_none_was_asked_for(fake_client):
+    responses = _run([json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"})],
+                     fake_client)
+    assert responses[0]["result"]["protocolVersion"] == PROTOCOL_VERSION
 
 
 def test_tools_list_has_eight_tools(fake_client):
