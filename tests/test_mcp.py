@@ -9,8 +9,14 @@ import pytest
 import conceptio_cli.mcp_server as mcp_mod
 from conceptio_cli.client import ConceptioError
 from conceptio_cli.mcp_server import (
+    CACHE_SCOPE,
+    CACHE_TTL_MS,
+    CURRENT_PROTOCOL_VERSION,
+    META_PROTOCOL_VERSION,
     PROTOCOL_VERSION,
+    SUPPORTED_PROTOCOL_VERSIONS,
     TOOLS,
+    UNSUPPORTED_PROTOCOL_VERSION_CODE,
     _workspace_output_path,
     run_mcp_server,
 )
@@ -363,3 +369,138 @@ def test_a_normal_payload_is_not_marked_as_an_error(fake_client):
     responses = _run([json.dumps(req)], fake_client)
     result = responses[0]["result"]
     assert "isError" not in result, "a successful tool call was flagged as an error"
+
+
+# ── the modern era (2026-07-28) ───────────────────────────────────────────────
+# The gate this closes: a **modern-only** client against our legacy server fails
+# non-deterministically — the spec lists *silence* as an outcome. `server/discover`
+# is the stdio probe that lets a dual-era client find our era instead of guessing,
+# and it is a MUST in the current revision. Eras are selected per request: `_meta`
+# means modern, an `initialize` handshake means legacy, and both are served here.
+
+
+def _modern(method, req_id, params=None, version=CURRENT_PROTOCOL_VERSION):
+    """A modern request — version and identity as per-request `_meta`."""
+    params = dict(params or {})
+    params["_meta"] = {
+        META_PROTOCOL_VERSION: version,
+        "io.modelcontextprotocol/clientInfo": {"name": "pytest", "version": "1"},
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+    return json.dumps({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params})
+
+
+def test_server_discover_advertises_both_eras(fake_client):
+    responses = _run([json.dumps({"jsonrpc": "2.0", "id": 1, "method": "server/discover"})],
+                     fake_client)
+    result = responses[0]["result"]
+    assert result["resultType"] == "complete"
+    assert result["supportedVersions"] == list(SUPPORTED_PROTOCOL_VERSIONS)
+    assert result["supportedVersions"][0] == CURRENT_PROTOCOL_VERSION, (
+        "the newest supported version must lead, or a client that picks the first entry lands on a legacy revision"
+    )
+    assert PROTOCOL_VERSION in result["supportedVersions"]
+    assert "tools" in result["capabilities"]
+    assert result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "conceptio-mcp"
+    assert result["ttlMs"] == CACHE_TTL_MS
+    assert result["cacheScope"] == CACHE_SCOPE
+    assert result.get("instructions")
+
+
+def test_server_discover_answers_a_bare_probe(fake_client):
+    """The probe may arrive with no `_meta` at all — the client does not yet know
+    our era. Unanswered, the client reads us as legacy and never speaks modern."""
+    responses = _run([json.dumps({"jsonrpc": "2.0", "id": 1, "method": "server/discover",
+                                  "params": {}})], fake_client)
+    assert responses[0]["result"]["resultType"] == "complete"
+
+
+def test_modern_tools_list_carries_result_type_and_cache_hints(fake_client):
+    responses = _run([_modern("tools/list", 2)], fake_client)
+    result = responses[0]["result"]
+    assert result["resultType"] == "complete"
+    assert result["ttlMs"] == CACHE_TTL_MS and result["cacheScope"] == CACHE_SCOPE
+    assert len(result["tools"]) == 8
+
+
+def test_modern_tools_call_carries_result_type_and_server_info(fake_client):
+    responses = _run([_modern("tools/call", 10,
+                              {"name": "conceptio_resolve", "arguments": {"id": "RFC 2119"}})],
+                     fake_client)
+    result = responses[0]["result"]
+    assert result["resultType"] == "complete"
+    assert result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "conceptio-mcp"
+    assert json.loads(result["content"][0]["text"])["kind"] == "rfc"
+
+
+def test_an_unsupported_modern_version_is_32022(fake_client):
+    """The modern contract: list the versions we DO support so the client retries.
+    `-32022` is the *modern* reply and is deliberately NOT what `initialize`
+    returns — a handshake-era client has no fall-forward mechanism."""
+    responses = _run([_modern("tools/list", 4, version="1900-01-01")], fake_client)
+    err = responses[0]["error"]
+    assert err["code"] == UNSUPPORTED_PROTOCOL_VERSION_CODE
+    assert err["data"]["requested"] == "1900-01-01"
+    assert err["data"]["supported"] == list(SUPPORTED_PROTOCOL_VERSIONS)
+    assert "result" not in responses[0]
+
+
+def test_a_legacy_version_sent_as_meta_is_still_modern_wire(fake_client):
+    """A request carrying `_meta` is the modern mechanism by definition, so a
+    handshake revision in that field is not a version we serve over it."""
+    responses = _run([_modern("tools/list", 5, version="2025-11-25")], fake_client)
+    assert responses[0]["error"]["code"] == UNSUPPORTED_PROTOCOL_VERSION_CODE
+
+
+def test_the_legacy_path_is_unchanged(fake_client):
+    """An `initialize` handshake, and any request without `_meta`, is still served
+    legacy: no `resultType`, no cache hints. The handshake band predates both, and
+    the installed base must not see a wire change."""
+    responses = _run([
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                    "params": {"protocolVersion": "2024-11-05"}}),
+        json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+    ], fake_client)
+    assert responses[0]["result"]["protocolVersion"] == "2024-11-05"
+    assert set(responses[1]["result"]) == {"tools"}, (
+        "a legacy result grew a modern field — %s" % sorted(responses[1]["result"])
+    )
+
+
+def test_a_modern_initialize_does_not_shadow_discovery(fake_client):
+    """`initialize` on the modern path is not how a modern client opens; it must
+    still answer a handshake client without disturbing `server/discover`."""
+    responses = _run([_modern("initialize", 6, {"protocolVersion": CURRENT_PROTOCOL_VERSION})],
+                     fake_client)
+    # A modern `initialize` is era-ambiguous; it is answered by the legacy rule
+    # (a version we support), never echoed back as the modern revision.
+    assert responses[0]["result"]["protocolVersion"] == PROTOCOL_VERSION
+
+
+def test_ping_survives_only_on_the_legacy_path(fake_client):
+    """`ping` was removed from the core in 2026-07-28; it stays for the legacy
+    band, where clients use it as a keepalive."""
+    legacy = _run([json.dumps({"jsonrpc": "2.0", "id": 7, "method": "ping"})], fake_client)
+    assert legacy[0]["result"] == {}
+    modern = _run([_modern("ping", 8)], fake_client)
+    assert modern[0]["error"]["code"] == -32601
+
+
+def test_the_published_manifest_declares_the_modern_era():
+    """A published claim is a test target. `/mcp.json` told every reader
+    `2024-11-05` while the code spoke it — the manifest is the only protocol
+    statement a client sees before it connects, so it must name the era we
+    actually serve. Absent checkout is a skip, not a failure."""
+    stack = Path(__file__).resolve().parent.parent.parent
+    manifest_path = stack / "Conceptio" / "frontend" / "public" / "mcp.json"
+    if not manifest_path.exists():
+        pytest.skip("the Conceptio checkout is not present in this workspace")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    transport = manifest.get("transport") or {}
+    assert transport.get("protocol") == CURRENT_PROTOCOL_VERSION, (
+        "mcp.json declares protocol %r; the server speaks %s"
+        % (transport.get("protocol"), CURRENT_PROTOCOL_VERSION)
+    )
+    assert transport.get("protocols") == list(SUPPORTED_PROTOCOL_VERSIONS), (
+        "mcp.json must advertise the whole supported set, not just the newest"
+    )

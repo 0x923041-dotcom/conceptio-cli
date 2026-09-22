@@ -4,6 +4,16 @@ Zero-dependency hand-rolled implementation of the MCP stdio transport, so the
 package works with Claude Desktop, Cursor, Windsurf, Antigravity, OpenCode,
 and any other MCP client without pulling in a framework.
 
+**Dual-era (2026-07-28).** The current revision replaces the `initialize`
+handshake with per-request `_meta`, and makes `server/discover` a MUST. This
+server implements both: `server/discover` answers with the revisions it speaks,
+an `initialize` opens the legacy path, and a request carrying
+`io.modelcontextprotocol/protocolVersion` in `_meta` is served statelessly by the
+modern path — `resultType: "complete"` on results, cache hints on the two
+cacheable lists. The official `mcp` SDK was considered and declined for now (it
+requires Python >=3.10 on a package that publishes `>=3.8`, and the modern work
+here is small). Rationale and migration order: `Conceptio/Plans/mcp_protocol_era.md`.
+
 Exposed tools:
   - conceptio_search          — keyword search over the open-access archive
   - conceptio_resolve         — resolve an identifier (RFC, DOI, arXiv, PMID, PMCID, NIST, W3C)
@@ -26,7 +36,9 @@ from .config import AUTH_REQUIRED_HINT, has_credential, load_config
 
 SERVER_NAME = "conceptio-mcp"
 
-#: The revision this server DECLARES — the one `/mcp.json` publishes.
+#: The handshake revision this server DECLARES. `/mcp.json` published this alone
+#: before the server learned the modern era; it remains the answer the legacy
+#: path gives for a requested version outside its band.
 PROTOCOL_VERSION = "2024-11-05"
 
 #: The handshake-era revisions this server is compatible with, oldest first. In
@@ -38,6 +50,50 @@ PROTOCOL_VERSION = "2024-11-05"
 #: capabilities that were actually negotiated, so the band is the honest
 #: declaration rather than a courtesy.
 LEGACY_PROTOCOL_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
+
+#: The current protocol revision — the **modern** era, where version, identity
+#: and capabilities travel as per-request `_meta` instead of an `initialize`
+#: handshake (revision 2026-07-28 and later). Read live 2026-09-22.
+CURRENT_PROTOCOL_VERSION = "2026-07-28"
+
+#: Modern revisions this server implements. One entry today; a tuple so the next
+#: revision is a one-line change.
+MODERN_PROTOCOL_VERSIONS = ("2026-07-28",)
+
+#: What `server/discover` advertises, newest first — the modern revision, then the
+#: handshake band. This is a **dual-era** server: `initialize` opens the legacy
+#: path, a request carrying per-request `_meta` is served statelessly by the
+#: modern one, and both are served from this same process (2026-07-28 Versioning
+#: -> Backward Compatibility).
+SUPPORTED_PROTOCOL_VERSIONS = (
+    (CURRENT_PROTOCOL_VERSION,) + tuple(reversed(LEGACY_PROTOCOL_VERSIONS))
+)
+
+#: Per-request metadata keys (2026-07-28). On the modern path the version travels
+#: on every request, not on a handshake.
+META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion"
+META_CLIENT_INFO = "io.modelcontextprotocol/clientInfo"
+META_CLIENT_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities"
+META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
+
+#: `UnsupportedProtocolVersionError` — the modern contract for a version we do not
+#: implement. It carries `data.supported` / `data.requested` so the client retries
+#: with a mutually supported version instead of guessing.
+UNSUPPORTED_PROTOCOL_VERSION_CODE = -32022
+
+#: Cache hints (2026-07-28 Caching). Servers MUST include these on
+#: `resultType: "complete"` results of `server/discover` and `tools/list`; both are
+#: identical for every caller, so both are `public`. An hour is generous for a list
+#: that changes only when the package does.
+CACHE_TTL_MS = 3600000
+CACHE_SCOPE = "public"
+
+SERVER_INSTRUCTIONS = (
+    "Conceptio is an open-access document retrieval layer: search a large live "
+    "corpus of books, papers, standards and case law, resolve identifiers, fetch "
+    "metadata and citations, and download open-access PDFs. Every search requires "
+    "an API key - run `conceptio auth` once first."
+)
 
 
 def negotiate_protocol_version(requested: Optional[Any]) -> str:
@@ -62,6 +118,67 @@ def negotiate_protocol_version(requested: Optional[Any]) -> str:
     if version in LEGACY_PROTOCOL_VERSIONS:
         return version
     return PROTOCOL_VERSION
+
+
+def _server_info() -> Dict[str, str]:
+    return {"name": SERVER_NAME, "version": __version__}
+
+
+def _server_meta() -> Dict[str, Any]:
+    """The `serverInfo` block every modern result carries in its `_meta`."""
+    return {META_SERVER_INFO: _server_info()}
+
+
+def _modernize(result: Dict[str, Any], *, cacheable: bool = False) -> Dict[str, Any]:
+    """Mark a result as modern-era: `resultType`, `serverInfo`, cache hints.
+
+    Legacy results carry none of this — the handshake band predates
+    `resultType`, and a field a legacy client does not read is a wire change for
+    nobody.
+    """
+    out = dict(result)
+    out["resultType"] = "complete"
+    out["_meta"] = _server_meta()
+    if cacheable:
+        out["ttlMs"] = CACHE_TTL_MS
+        out["cacheScope"] = CACHE_SCOPE
+    return out
+
+
+def _discover_result() -> Dict[str, Any]:
+    """`server/discover` — the MUST, and what a modern client probes with.
+
+    One RPC returning the versions we support, our capabilities and our identity,
+    so a client selects a version instead of guessing. On stdio this is also the
+    documented backward-compatibility probe: a client that speaks both eras sends
+    it first and falls back to `initialize` only on a non-modern error.
+
+    Deliberately not gated on credentials — like `initialize`, discovery is how a
+    host decides whether the server is usable at all. A keyless server still
+    answers, and refuses each tool call.
+    """
+    return {
+        "resultType": "complete",
+        "supportedVersions": list(SUPPORTED_PROTOCOL_VERSIONS),
+        "capabilities": {"tools": {}},
+        "_meta": _server_meta(),
+        "instructions": SERVER_INSTRUCTIONS,
+        "ttlMs": CACHE_TTL_MS,
+        "cacheScope": CACHE_SCOPE,
+    }
+
+
+def _unsupported_version(requested: str) -> Dict[str, Any]:
+    """The error body for a modern request naming a version we do not implement."""
+    return {
+        "code": UNSUPPORTED_PROTOCOL_VERSION_CODE,
+        "message": "Unsupported protocol version",
+        "data": {
+            "supported": list(SUPPORTED_PROTOCOL_VERSIONS),
+            "requested": requested,
+        },
+    }
+
 
 TOOLS: List[Dict[str, Any]] = [
     {
@@ -355,22 +472,46 @@ def run_mcp_server() -> int:
             req = json.loads(line)
             req_id = req.get("id")
             method = req.get("method")
+            params = req.get("params") or {}
+            meta = params.get("_meta") or {}
+            # A request carrying per-request `_meta` is the MODERN era; its
+            # absence is the legacy path (opened by an `initialize` handshake).
+            modern_version = str(meta.get(META_PROTOCOL_VERSION) or "").strip()
 
-            if method == "initialize":
-                requested = (req.get("params") or {}).get("protocolVersion")
+            if modern_version and modern_version not in MODERN_PROTOCOL_VERSIONS:
+                # The modern contract: name the versions we DO support so the
+                # client retries instead of guessing (2026-07-28 Versioning).
+                res = {"jsonrpc": "2.0", "id": req_id,
+                       "error": _unsupported_version(modern_version)}
+            elif method == "server/discover":
+                # MUST be implemented, and served whether or not the probe
+                # carried `_meta` — it is how a dual-era client finds our era.
+                res = {"jsonrpc": "2.0", "id": req_id, "result": _discover_result()}
+            elif method == "initialize":
+                requested = params.get("protocolVersion")
                 result = {
                     "protocolVersion": negotiate_protocol_version(requested),
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": SERVER_NAME, "version": __version__},
+                    "serverInfo": _server_info(),
                 }
                 res = {"jsonrpc": "2.0", "id": req_id, "result": result}
             elif method == "ping":
-                res = {"jsonrpc": "2.0", "id": req_id, "result": {}}
+                # Removed from the core in 2026-07-28; it survives only on the
+                # legacy path, so a modern request for it is an unknown method.
+                if modern_version:
+                    res = {"jsonrpc": "2.0", "id": req_id,
+                           "error": {"code": -32601, "message": "Method not found"}}
+                else:
+                    res = {"jsonrpc": "2.0", "id": req_id, "result": {}}
             elif method == "tools/list":
-                res = {"jsonrpc": "2.0", "id": req_id, "result": {"tools": TOOLS}}
+                result = {"tools": TOOLS}
+                if modern_version:
+                    result = _modernize(result, cacheable=True)
+                res = {"jsonrpc": "2.0", "id": req_id, "result": result}
             elif method == "tools/call":
-                params = req.get("params") or {}
                 result = _handle_call(client, params.get("name", ""), params.get("arguments") or {})
+                if modern_version:
+                    result = _modernize(result)
                 res = {"jsonrpc": "2.0", "id": req_id, "result": result}
             elif method.startswith("notifications/"):
                 # Notifications carry no id and expect no response.

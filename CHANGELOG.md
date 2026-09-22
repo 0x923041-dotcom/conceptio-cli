@@ -5,6 +5,22 @@ tags; the CLI's own `conceptio --version` reports the installed distribution.
 
 ## Unreleased
 
+### Added
+
+- **The MCP server is dual-era.** It now speaks the current protocol revision
+  **`2026-07-28`** alongside the `initialize` handshake band: `server/discover`
+  (a MUST in the current revision, and the stdio probe a dual-era client uses to
+  find the server's era), `resultType: "complete"` on every result,
+  `ttlMs`/`cacheScope` on `tools/list` and `server/discover`, `serverInfo` in each
+  result's `_meta`, and `UnsupportedProtocolVersionError` (`-32022`) naming the
+  supported set when a modern request names a version we do not implement. A
+  request carrying per-request `_meta` is served by the modern path; an
+  `initialize` handshake, and any request without `_meta`, is served legacy
+  unchanged. The published `/mcp.json` now declares `2026-07-28` plus the full
+  supported set. The official `mcp` SDK was considered and declined for now: it
+  requires Python >=3.10 on a package that publishes `>=3.8`, and the modern work
+  is small. Rationale and migration order: `Conceptio/Plans/mcp_protocol_era.md`.
+
 ### Fixed
 
 - **The MCP server no longer claims a protocol revision it does not implement.**

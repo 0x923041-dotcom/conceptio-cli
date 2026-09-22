@@ -153,6 +153,12 @@ only rot if that check is skipped.
 The `conceptio mcp` command starts a stdio JSON-RPC MCP server. It is dependency-free
 (no MCP SDK required) and works with any MCP client.
 
+The server is **dual-era**: it answers the current **2026-07-28** revision —
+per-request `_meta`, `server/discover`, `resultType`, cache hints — and still
+serves the older `initialize` handshake (`2024-11-05` … `2025-11-25`) for clients
+that predate it. A client that speaks both eras probes with `server/discover`
+first and finds us; a handshake client is served exactly as before.
+
 ### Tools
 
 | Tool | Description |

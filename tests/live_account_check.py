@@ -776,6 +776,102 @@ def _mcp_bad_call(account):
             proc.kill()
 
 
+@check("the MCP server speaks the modern era too, not just the handshake")
+def _mcp_modern_era(account):
+    """A single handshake proves only the era we already had.
+
+    The gate is a **modern-only** client: against a legacy server it fails
+    non-deterministically (the spec lists *silence* as an outcome), and no probe
+    in this suite could see that. So this drives the modern path directly — the
+    `server/discover` probe, a request carrying per-request `_meta`, and a version
+    we do not support — and asserts the legacy path still answers **without** the
+    modern fields, because a server that quietly modernised both would break its
+    installed base. Spends no reads: discovery and the tool list are local.
+    """
+    from conceptio_cli.mcp_server import CURRENT_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS
+
+    meta = {
+        "io.modelcontextprotocol/protocolVersion": CURRENT_PROTOCOL_VERSION,
+        "io.modelcontextprotocol/clientInfo": {"name": "live_account_check", "version": "1"},
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+    requests = [
+        {"jsonrpc": "2.0", "id": 101, "method": "server/discover", "params": {"_meta": dict(meta)}},
+        {"jsonrpc": "2.0", "id": 102, "method": "tools/list", "params": {"_meta": dict(meta)}},
+        {"jsonrpc": "2.0", "id": 103, "method": "tools/list", "params": {}},
+        {"jsonrpc": "2.0", "id": 104, "method": "tools/list",
+         "params": {"_meta": {"io.modelcontextprotocol/protocolVersion": "1900-01-01"}}},
+    ]
+    argv = account.command + ["mcp"]
+    proc = subprocess.Popen(argv, cwd=str(REPO), env=account.env, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            encoding="utf-8", errors="replace", bufsize=1)
+    want = {r["id"] for r in requests}
+    replies = {}
+    try:
+        for request in requests:
+            proc.stdin.write(json.dumps(request) + "\n")
+            proc.stdin.flush()
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline and len(replies) < len(want):
+            line = proc.stdout.readline()
+            if not line:
+                break
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                message = json.loads(line)
+            except ValueError:
+                continue
+            if message.get("id") in want:
+                replies[message["id"]] = message
+    finally:
+        try:
+            proc.stdin.close()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+    discover = (replies.get(101) or {}).get("result") or {}
+    assert discover, "server/discover went unanswered — the modern-only gate is still open: %r" % replies.get(101)
+    assert discover.get("resultType") == "complete", "discover lacks resultType: %s" % discover
+    assert discover.get("supportedVersions") == list(SUPPORTED_PROTOCOL_VERSIONS), (
+        "discover advertises %s; the code supports %s"
+        % (discover.get("supportedVersions"), list(SUPPORTED_PROTOCOL_VERSIONS))
+    )
+    assert discover.get("ttlMs") is not None and discover.get("cacheScope") in ("public", "private"), (
+        "discover carries no valid caching hints: %s" % discover
+    )
+
+    modern_list = (replies.get(102) or {}).get("result") or {}
+    assert modern_list.get("resultType") == "complete", "a modern tools/list lost resultType: %s" % modern_list
+    assert modern_list.get("ttlMs") is not None and modern_list.get("cacheScope"), (
+        "a modern tools/list carries no caching hints: %s" % modern_list
+    )
+    assert len(modern_list.get("tools") or []) == MCP_TOOL_COUNT, (
+        "modern tools/list returned %d tools, expected %d"
+        % (len(modern_list.get("tools") or []), MCP_TOOL_COUNT)
+    )
+
+    legacy_list = (replies.get(103) or {}).get("result") or {}
+    assert legacy_list.get("tools"), "a legacy (no _meta) tools/list stopped answering: %r" % replies.get(103)
+    assert "resultType" not in legacy_list, (
+        "the legacy path grew a modern field — the installed base sees a wire change: %s" % sorted(legacy_list)
+    )
+
+    unsupported = (replies.get(104) or {}).get("error") or {}
+    assert unsupported.get("code") == -32022, (
+        "an unsupported modern version did not return -32022: %r" % replies.get(104)
+    )
+    assert CURRENT_PROTOCOL_VERSION in ((unsupported.get("data") or {}).get("supported") or []), (
+        "the unsupported-version error does not name what we support: %s" % unsupported
+    )
+
+
 # ── the whole transcript, at the end: nothing leaked, nothing crashed ────────
 
 @check("no invocation echoed the credential")
