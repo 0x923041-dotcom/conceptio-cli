@@ -349,10 +349,10 @@ default base and 6 of its 9 checks go red, which is how you know they bite.
 
 ### The client contract
 
-The CLI is also a dependency of five editor clients — the Neovim plugin, the
-VS Code extension, the Obsidian plugin, the Raycast extension and the Alfred
-workflow. They exec this binary with an argv list and read stdout; nothing
-couples them but that grammar. `tests/client_contract.py` records every
+The CLI is also a dependency of five client surfaces — the Neovim plugin, the
+VS Code extension, the Obsidian plugin, and two macOS launcher integrations
+(Raycast, Alfred) that are parked and not distributed. They exec this binary
+with an argv list and read stdout; nothing couples them but that grammar. `tests/client_contract.py` records every
 invocation they make, with the file it came from:
 
 - `tests/test_cli_contract.py` parses each row against `cli.build_parser()`, and
