@@ -504,3 +504,28 @@ def test_the_published_manifest_declares_the_modern_era():
     assert transport.get("protocols") == list(SUPPORTED_PROTOCOL_VERSIONS), (
         "mcp.json must advertise the whole supported set, not just the newest"
     )
+
+
+def test_both_eras_are_served_concurrently_in_one_process(fake_client):
+    """A dual-era server MAY serve both eras from one process, and this one does.
+
+    Nothing above pins it: every other check runs its own exchange, so a server
+    that latched the first era it saw and stayed there would pass all of them.
+    This interleaves a handshake, a modern call, a legacy call, and a modern call
+    in ONE run — the era is selected per request, not per process.
+    """
+    responses = _run([
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                    "params": {"protocolVersion": "2025-11-25"}}),
+        _modern("tools/list", 2),
+        json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}),
+        _modern("tools/call", 4, {"name": "conceptio_get_document", "arguments": {"doc_id": 1}}),
+    ], fake_client)
+    assert responses[0]["result"]["protocolVersion"] == "2025-11-25"
+    assert responses[1]["result"].get("resultType") == "complete"
+    assert "resultType" not in responses[2]["result"], (
+        "the modern era latched onto a later legacy request — the era is not per-request"
+    )
+    assert responses[3]["result"].get("resultType") == "complete", (
+        "a legacy request turned the modern era off — the two must coexist"
+    )
