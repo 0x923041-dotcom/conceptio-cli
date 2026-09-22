@@ -19,7 +19,7 @@ tags; the CLI's own `conceptio --version` reports the installed distribution.
   unchanged. The published `/mcp.json` now declares `2026-07-28` plus the full
   supported set. The official `mcp` SDK was considered and declined for now: it
   requires Python >=3.10 on a package that publishes `>=3.8`, and the modern work
-  is small. Rationale and migration order: `Conceptio/Plans/mcp_protocol_era.md`.
+  is small.
 
 ### Fixed
 

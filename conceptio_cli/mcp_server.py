@@ -12,7 +12,7 @@ an `initialize` opens the legacy path, and a request carrying
 modern path — `resultType: "complete"` on results, cache hints on the two
 cacheable lists. The official `mcp` SDK was considered and declined for now (it
 requires Python >=3.10 on a package that publishes `>=3.8`, and the modern work
-here is small). Rationale and migration order: `Conceptio/Plans/mcp_protocol_era.md`.
+here is small).
 
 Exposed tools:
   - conceptio_search          — keyword search over the open-access archive
