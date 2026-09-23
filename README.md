@@ -1,5 +1,7 @@
 # conceptio-search
 
+<!-- mcp-name: io.github.0x923041-dotcom/conceptio-search -->
+
 **Search 1M+ open-access documents — papers, standards, textbooks, and case law — right from your terminal or your AI agent.**
 
 `conceptio-search` is a CLI and [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for the [Conceptio Open Knowledge Archive](https://conceptio.app) — 1M+ open-access documents from 500+ living sources, indexed daily. Every source is open access or public domain. The CLI authenticates with an API key: sign in once, save the key, search from anywhere.

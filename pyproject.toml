@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "conceptio-search"
-version = "0.3.6"
+version = "0.3.7"
 description = "Search 1M+ open-access documents — papers, standards, case law, books — from your terminal or your AI agent. A CLI and Model Context Protocol (MCP) server."
 readme = "README.md"
 license = { text = "MIT" }
@@ -35,6 +35,10 @@ Homepage = "https://conceptio.app"
 
 [project.scripts]
 conceptio = "conceptio_cli.cli:main"
+# A second name for the same entry point, so the official MCP registry's
+# `uvx <identifier> <args>` convention resolves: `uvx conceptio-search mcp`
+# starts the stdio server exactly as `conceptio mcp` does.
+conceptio-search = "conceptio_cli.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["conceptio_cli*"]

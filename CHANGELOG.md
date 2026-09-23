@@ -3,6 +3,18 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## 0.3.7
+
+### Added
+
+- **Listed in the official MCP registry.** `server.json` declares the PyPI
+  distribution, the `uvx` runtime and the `CONCEPTIO_API_KEY` environment
+  variable, and the README carries the `mcp-name` marker the registry's
+  ownership check reads. A `conceptio-search` console script mirrors
+  `conceptio`, so the registry's `uvx conceptio-search mcp` convention resolves
+  to the same entry point as `conceptio mcp`. `tests/test_registry_listing.py`
+  keeps the two halves (marker and `server.json`) from drifting apart.
+
 ## 0.3.6
 
 ### Added

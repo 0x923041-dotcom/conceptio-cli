@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.0x923041-dotcom/conceptio-search",
+  "title": "Conceptio Search",
+  "description": "Search 1M+ open-access papers, standards, and case law from an AI agent.",
+  "repository": {
+    "url": "https://github.com/0x923041-dotcom/conceptio-cli",
+    "source": "github"
+  },
+  "websiteUrl": "https://conceptio.app",
+  "version": "0.3.7",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "conceptio-search",
+      "version": "0.3.7",
+      "runtimeHint": "uvx",
+      "packageArguments": [
+        { "type": "positional", "value": "mcp" }
+      ],
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "CONCEPTIO_API_KEY",
+          "description": "Conceptio API key (Free, Dev, Pro or Enterprise) from your profile at https://www.conceptio.app. Required because an MCP client cannot run the CLI's interactive auth.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
