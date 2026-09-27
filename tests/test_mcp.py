@@ -506,6 +506,18 @@ def test_the_published_manifest_declares_the_modern_era():
     )
 
 
+    # The tool list is the other half of the same published claim: a manifest
+    # that advertises a tool the server does not ship — or misses one it does —
+    # sends an agent at a call that cannot answer. Names only; the manifest's
+    # descriptions are deliberately shorter than the wire's.
+    manifest_tools = [t.get("name") for t in manifest.get("tools") or []]
+    shipped_tools = [t["name"] for t in TOOLS]
+    assert sorted(manifest_tools) == sorted(shipped_tools), (
+        "/mcp.json advertises %s; the server ships %s"
+        % (sorted(manifest_tools), sorted(shipped_tools))
+    )
+
+
 def test_both_eras_are_served_concurrently_in_one_process(fake_client):
     """A dual-era server MAY serve both eras from one process, and this one does.
 
