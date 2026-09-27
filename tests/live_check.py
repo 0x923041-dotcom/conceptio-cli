@@ -668,6 +668,54 @@ def define_checks(live, main, running, expired, connectors, work):
                "keyless --json: the refusal leaked into stdout: %r" % proc.stdout[:200])
         expect(not main.since(mark, "GET /api/search"), "keyless: a request left the box anyway")
 
+    @check("mcp — keyless: the handshake and tool list answer, a call is refused in band")
+    def _mcp_keyless():
+        """A host with no key must be able to probe the server — and nothing more.
+
+        Pinned to the 2026-09-27 change. The entry point used to refuse keyless
+        startup outright, so a host that had not yet been given a key showed a
+        *disconnected* server and never the reason (the hint went to stderr, which
+        a host swallows). Discovery is not a data operation — the tool schemas are
+        already public in `/mcp.json` — so the handshake and `tools/list` answer,
+        while every `tools/call` is refused in band.
+
+        No protocol-revision literal is asserted here on purpose: this check has
+        to outlive the next revision (`live_account_check.py` owns the era).
+        """
+        home = work / "home-mcp-keyless"
+        home.mkdir(exist_ok=True)
+        caller = live.with_home(home)
+        mark = main.mark()
+
+        def reply_of(request):
+            proc = caller.run("mcp", stdin_text=json.dumps(request) + "\n",
+                              timeout=90, base=main.base, key="")
+            exit_is(proc, 0, "keyless mcp %s" % request["method"])
+            line = next((l for l in proc.stdout.splitlines() if l.strip().startswith("{")), "")
+            expect(line, "keyless mcp %s: no JSON-RPC line on stdout: %s"
+                   % (request["method"], proc.stdout.strip()[:200]))
+            return json.loads(line)
+
+        handshake = reply_of({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                              "params": {"protocolVersion": "2024-11-05"}})
+        expect((handshake.get("result") or {}).get("serverInfo", {}).get("name") == "conceptio-mcp",
+               "keyless mcp: the handshake did not answer: %s" % json.dumps(handshake)[:200])
+
+        catalog = reply_of({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        names = [t["name"] for t in (catalog.get("result") or {}).get("tools", [])]
+        expect(len(names) == 8, "keyless mcp: tools/list answered %d tools: %s" % (len(names), names))
+
+        call = reply_of({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                         "params": {"name": "conceptio_search",
+                                    "arguments": {"query": "zero trust"}}})
+        result = call.get("result") or {}
+        expect(result.get("isError") is True,
+               "keyless mcp: the call was not refused in band: %s" % json.dumps(call)[:200])
+        expect("Authentication required" in json.dumps(result),
+               "keyless mcp: the refusal carries no guidance: %s" % json.dumps(result)[:200])
+        expect(not main.since(mark, "GET /api/search"),
+               "keyless mcp: a search left the box without a credential")
+
     @check("quota names the environment variable when that is where the key came from")
     def _env_origin():
         # The credential here arrives by environment (that is how this whole
