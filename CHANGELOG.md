@@ -3,6 +3,20 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## 0.3.8
+
+### Changed
+
+- **MCP server starts keyless for protocol discovery and initialization.** The
+  upfront CLI-level process gate on `require_auth()` for the `mcp` command was
+  removed. The server now cleanly starts, initializes, and serves `server/discover`
+  and `tools/list` without a configured credential. Authentication is enforced
+  fail-closed per tool call inside the MCP loop, returning structured in-band
+  `isError: true` responses carrying `conceptio auth` guidance.
+- **MCP configuration examples document explicit environment variable delivery.**
+  `mcpServers` configuration blocks across documentation and manifests now explicitly
+  include `"env": {"CONCEPTIO_API_KEY": "ckey_live_..."}`.
+
 ## 0.3.7
 
 ### Added

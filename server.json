@@ -8,12 +8,12 @@
     "source": "github"
   },
   "websiteUrl": "https://conceptio.app",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "conceptio-search",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "runtimeHint": "uvx",
       "packageArguments": [
         { "type": "positional", "value": "mcp" }
