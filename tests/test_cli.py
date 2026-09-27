@@ -538,11 +538,19 @@ def test_data_commands_require_auth(capsys, monkeypatch, argv):
     assert "conceptio auth" in out
 
 
-def test_mcp_refuses_keyless_on_stderr(capsys, monkeypatch):
+def test_mcp_starts_keyless_and_answers_discovery(capsys, monkeypatch):
+    """MCP server starts keyless and handles protocol discovery/handshake gracefully.
+    Authentication is required on tool calls, handled inside the server loop."""
     _keyless(monkeypatch)
-    assert main(["mcp"]) == 1
-    err = capsys.readouterr().err
-    assert "Authentication required" in err
+    import io
+    stdin = io.StringIO(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"}) + "\n")
+    stdout = io.StringIO()
+    monkeypatch.setattr("sys.stdin", stdin)
+    monkeypatch.setattr("sys.stdout", stdout)
+    assert main(["mcp"]) == 0
+    lines = [json.loads(l) for l in stdout.getvalue().strip().splitlines() if l.strip()]
+    assert len(lines) == 1
+    assert lines[0]["result"]["serverInfo"]["name"] == "conceptio-mcp"
 
 
 def test_quota_reports_an_environment_key_as_an_environment_key(capsys, monkeypatch):

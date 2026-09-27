@@ -409,11 +409,11 @@ def require_auth() -> bool:
     Returns True when an API key, license key or signed-in bearer token is
     configured (config file or the CONCEPTIO_* environment variables), else
     prints how to authenticate and returns False. Deliberately client-side: the
-    public API tier still serves browsers; this gate keeps the CLI and MCP
-    server behind authentication.
+    public API tier still serves browsers; this gate keeps the CLI commands
+    behind authentication (MCP handles per-call auth inside run_mcp_server).
 
     The predicate is shared with the MCP server (`config.has_credential`) so
-    the entry gate and the per-call gate can never disagree again — and the
+    the entry gate and the per-call gate can never disagree — and the
     config is loaded through this module's own `load_config`, which is the seam
     hosts and tests substitute.
     """
@@ -818,11 +818,6 @@ def main(argv: Optional[list] = None) -> int:
             # stdout is JSON-RPC for the whole process lifetime: every human
             # byte goes to stderr, including rich's.
             set_json_mode(True)
-            if not require_auth():
-                # stdout must stay pure JSON-RPC for the agent host — the
-                # guidance goes to stderr instead of the console.
-                print(AUTH_REQUIRED_HINT, file=sys.stderr)
-                return 1
             from .mcp_server import run_mcp_server
             return run_mcp_server()
 
