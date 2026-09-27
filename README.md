@@ -161,10 +161,10 @@ serves the older `initialize` handshake (`2024-11-05` … `2025-11-25`) for clie
 that predate it. A client that speaks both eras probes with `server/discover`
 first and finds us; a handshake client is served exactly as before.
 
-**A key is required before a client connects.** `conceptio mcp` refuses to start without one — and
-it exits with its setup guidance on **stderr**, so a host's JSON-RPC stream on stdout never carries
-a human byte. Run `conceptio auth <key>` once, or hand the key to the host through the host's own
-environment, which is how the official registry listing declares it:
+**A key is required for tool calls.** The server starts without one, so a host can discover it and
+read its tool list — and then answers every `tools/call` with an in-band error carrying the setup
+steps. Hand it the key either way: run `conceptio auth <key>` once, or give it to the host through the
+host's own environment, which is how the official registry listing declares it:
 
 ```json
 { "mcpServers": { "conceptio": { "command": "conceptio", "args": ["mcp"],

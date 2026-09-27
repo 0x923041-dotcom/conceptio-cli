@@ -385,12 +385,14 @@ def _payload_result(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a tool call. Returns {content, isError?}."""
-    # Defense in depth: the `mcp` entry point already refuses keyless startup,
-    # but the config file can change under a running server. This must ask the
-    # SAME question the CLI's gate asks — including the environment, which is
-    # how an MCP host supplies a key without touching the config file. It used
-    # to read only the config file, so a server started with CONCEPTIO_API_KEY
-    # accepted the connection and then refused every single tool call.
+    # The credential gate for MCP lives HERE, not at process start: the server
+    # serves discovery and the tool list keyless — that is how a host decides the
+    # server is usable and tells the user what is missing — and every call is
+    # refused in-band until a key exists. It must ask the SAME question the CLI's
+    # gate asks — including the environment, which is how an MCP host supplies a
+    # key without touching the config file. It used to read only the config file,
+    # so a server started with CONCEPTIO_API_KEY accepted the connection and then
+    # refused every single tool call.
     if not has_credential(load_config()):
         return {"content": _text(AUTH_REQUIRED_HINT), "isError": True}
     if name == "conceptio_search":
