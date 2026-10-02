@@ -24,15 +24,12 @@ STACK = Path(__file__).resolve().parent.parent.parent
 REPO = Path(__file__).resolve().parent.parent
 
 # Every client tells the user which CLI release is current, in prose. Nothing
-# checks prose: when 0.3.3 shipped, four of the five still said "The current
-# release is 0.3.2", and every one of their own suites stayed green — a client
+# checks prose: when 0.3.3 shipped, the client READMEs still said "The current
+# release is 0.3.2" and their own suites stayed green — a client
 # cannot see this repo's version. This repo can see all of them, so the claim is
 # checked here, next to the argv contract it belongs to.
 CLIENT_READMES = {
     "neovim": STACK / "conceptio-nvim" / "README.md",
-    "vscode": STACK / "conceptio-vscode" / "README.md",
-    "raycast": STACK / "conceptio-raycast" / "README.md",
-    "alfred": STACK / "conceptio-alfred" / "README.md",
     "obsidian": STACK / "conceptio-obsidian" / "README.md",
 }
 
@@ -119,7 +116,7 @@ def test_client_readmes_name_this_release():
     )
     if not claims:
         pytest.skip("no client checkouts next to this repo (%s)" % ", ".join(sorted(missing)))
-    assert len(claims) >= 3, (
+    assert len(claims) >= 2, (
         "only %d client README(s) state a current release — the phrase moved or "
         "was dropped, so this check is no longer guarding anything." % len(claims)
     )

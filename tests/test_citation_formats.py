@@ -11,11 +11,10 @@ API renders perfectly, missing from the list a person can pick.
 This file is the comparison. `canonical()` is this repo's own `CITE_FORMATS`
 (what `--format` validates against); every other carrier must agree with it.
 
-**The invariant is the SET, not the order** — measured, not assumed. Raycast's
-settings dropdown opens with `apa` while its `types.ts` array opens with
-`bibtex`, and the website's `CITE_FORMATS` opens with `apa` while this CLI's list
+**The invariant is the SET, not the order** — measured, not assumed. The
+website's `CITE_FORMATS` opens with `apa` while this CLI's list
 opens with `bibtex`. Those are presentation choices in different places (a
-default-first dropdown, a documented order in `--help`), so pinning the sequence
+default-first picker, a documented order in `--help`), so pinning the sequence
 would fail on a legitimate edit; pinning the membership is what actually breaks
 a user. Membership is therefore asserted, and order differences are reported as
 information, never as a failure.
@@ -169,7 +168,7 @@ def extract_json_enum_containing(text):
 
 
 def extract_json_dropdown_values(text, preference):
-    """A Raycast preference dropdown's `data[].value` list."""
+    """A dropdown preference's `data[].value` list."""
     for pref in json.loads(text).get("preferences", []):
         if pref.get("name") != preference:
             continue
@@ -227,21 +226,13 @@ CARRIERS = (
      "prose_formats", ("Formats:",)),
     ("Obsidian plugin", "conceptio-obsidian/src/types.ts",
      "identifier_array", ("CITATION_FORMATS",)),
-    ("Raycast extension", "conceptio-raycast/src/lib/types.ts",
-     "identifier_array", ("CITATION_FORMATS",)),
-    ("Raycast settings dropdown", "conceptio-raycast/package.json",
-     "json_dropdown_values", ("defaultCitationFormat",)),
-    ("VS Code webview", "conceptio-vscode/src/webview/main.ts",
-     "identifier_array", ("CITATION_FORMATS",)),
-    ("VS Code settings enum", "conceptio-vscode/package.json",
-     "package_enum", ("conceptio.citationFormat",)),
 )
 
 # A checkout that is not here cannot be compared. Below this many *present*
 # carriers the comparison is not covering the surface it claims to, which is a
 # failure of this check rather than a fact about the code — the same rule the
 # README contract uses.
-MIN_CARRIERS = 4
+MIN_CARRIERS = 3
 
 
 def canonical():

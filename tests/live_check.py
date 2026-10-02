@@ -813,7 +813,7 @@ def define_checks(live, main, running, expired, connectors, work):
                "mcp: an unknown tool did not answer as a tool error: %s" % json.dumps(reply)[:200])
         expect(proc.returncode == 0, "mcp: the server exited %s on an unknown tool" % proc.returncode)
 
-    # ── the five clients, driven exactly as they drive it ───────────────────
+    # ── the shipped clients, driven exactly as they drive it ────────────────
 
     def _client_check(client):
         def _run():

@@ -177,9 +177,8 @@ tags; the CLI's own `conceptio --version` reports the installed distribution.
 
 ### Added
 
-- **`tests/client_contract.py` — the argv grammar the five clients depend on,
-  written down and tested.** The Neovim, VS Code, Obsidian, Raycast and Alfred
-  clients all exec this binary with an argument list and read stdout; nothing
+- **`tests/client_contract.py` — the argv grammar the clients depend on,
+  written down and tested.** Each client execs this binary with an argument list and reads stdout; nothing
   type-checks that list, and no client's suite can see this repo, so a renamed
   subcommand passes both suites and ships broken. Every distinct invocation is
   recorded with the file it came from, `cli.build_parser()` exposes the grammar
