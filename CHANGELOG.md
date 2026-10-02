@@ -3,6 +3,15 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## 0.3.9
+
+### Changed
+
+- **The docs and the client contract now name only the shipped clients** — the Neovim
+  plugin and the Obsidian plugin. Unshipped surfaces are gone from the README, the
+  contract tables, and the published package metadata. No behaviour changes;
+  `conceptio --version` reports 0.3.9 to mark the corrected release.
+
 ## 0.3.8
 
 ### Changed
