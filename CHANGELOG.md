@@ -3,6 +3,17 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## 0.3.10
+
+### Added
+
+- **`conceptio_graph_walk` — the compliance walk reaches the agent surface.** Walk the stored
+  reference pair from any seed `source_id`: what it cites (`direction: 'out'`), what cites it
+  (`'in'`), or `'both'`, one or two hops, optionally filtered to the `cites` / `updates` relation
+  kinds. Nodes carry their distance from the seed; edges are canonical and carry their kinds.
+  Metadata-only — it spends no search credits. (`/api/graph/walk` over HTTP was already public;
+  this is the MCP tool that was missing, so an agent no longer has to spell raw HTTP to traverse.)
+
 ## 0.3.9
 
 ### Changed
