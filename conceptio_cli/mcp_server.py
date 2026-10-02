@@ -328,6 +328,46 @@ TOOLS: List[Dict[str, Any]] = [
             "required": ["doc_id"],
         },
     },
+    {
+        "name": "conceptio_graph_walk",
+        "description": (
+            "Walk the reference graph from one seed source_id — the compliance walk: "
+            "what that document cites (direction='out'), what cites it (direction='in'), "
+            "or both. Optional kind filter selects cites/updates. Returns nodes with a "
+            "distance from the seed and canonical edges carrying their relation kinds; "
+            "dangling targets appear as claimed nodes. Metadata-only: spends no credits. "
+            "Use when an agent needs provenance — what cites this regulation two hops out "
+            "— instead of a keyword search."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "seed": {
+                    "type": "string",
+                    "description": "Archive source_id to start the walk from (e.g. 'usc_42_1396a')",
+                },
+                "direction": {
+                    "type": "string",
+                    "enum": ["out", "in", "both"],
+                    "default": "out",
+                    "description": "out = what the seed cites, in = what cites the seed, both = either",
+                },
+                "hops": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2,
+                    "default": 2,
+                    "description": "Traversal depth (1 or 2); the server caps the walk here",
+                },
+                "kind": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["cites", "updates"]},
+                    "description": "Relation kind(s) to traverse; pass several to intersect them",
+                },
+            },
+            "required": ["seed"],
+        },
+    },
 ]
 
 
@@ -458,6 +498,21 @@ def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Di
     if name == "conceptio_get_document":
         doc = client.get_document(int(args.get("doc_id", 0)))
         return _payload_result(doc)
+
+    if name == "conceptio_graph_walk":
+        seed = str(args.get("seed") or "").strip()
+        if not seed:
+            raise ConceptioError("seed (an archive source_id) is required.")
+        kind = args.get("kind")
+        if kind is not None and not isinstance(kind, list):
+            kind = [kind]
+        data = client.graph_walk(
+            seed,
+            direction=str(args.get("direction") or "out"),
+            hops=int(args.get("hops") or 2),
+            kind=kind,
+        )
+        return _payload_result(data)
 
     return {"content": _text(f"Unknown tool: {name}"), "isError": True}
 

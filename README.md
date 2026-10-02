@@ -7,7 +7,7 @@
 `conceptio-search` is a CLI and [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for the [Conceptio Open Knowledge Archive](https://conceptio.app) — 1M+ open-access documents from 500+ living sources, indexed daily. Every source is open access or public domain. The CLI authenticates with an API key: sign in once, save the key, search from anywhere.
 
 - **For humans** — search, export citations in 11 formats (BibTeX, APA, MLA, Chicago, IEEE, Harvard, RIS, Bluebook, OSCOLA, ISO 690, ANSI Z39), and download PDFs to disk with one command.
-- **For AI agents** — a stdio MCP server with eight tools, so Claude, Cursor, Windsurf, OpenCode, or any MCP client can search, queue batch searches, resolve identifiers (RFC, DOI, arXiv, PMID, PMCID, NIST/FIPS, W3C, US case citation), save PDFs into your workspace, and hand a document to Zotero or Obsidian.
+- **For AI agents** — a stdio MCP server with nine tools, so Claude, Cursor, Windsurf, OpenCode, or any MCP client can search, queue batch searches, resolve identifiers (RFC, DOI, arXiv, PMID, PMCID, NIST/FIPS, W3C, US case citation), walk the reference graph, save PDFs into your workspace, and hand a document to Zotero or Obsidian.
 - **100% self-contained** — talks only to the public HTTPS API. No internal infrastructure; your key lives in `~/.conceptio/config.json`.
 
 ---
@@ -181,6 +181,7 @@ host's own environment, which is how the official registry listing declares it:
 | `conceptio_download_pdf` | Download the original open-access PDF for a Conceptio document ID or a direct PDF URL to a local path. |
 | `conceptio_get_citation` | Get a citation for a document ID in any of 11 formats (BibTeX, APA, MLA, Chicago, IEEE, Harvard, RIS, Bluebook, OSCOLA, ISO 690, ANSI Z39). |
 | `conceptio_get_document` | Full metadata (title, author, source, category, license, year, language, URL, direct PDF URL, description) for a document ID. |
+| `conceptio_graph_walk` | Walk the reference graph from a seed `source_id` — what it cites (`direction: 'out'`), what cites it (`'in'`), or `'both'` — one or two hops, optionally filtered to the `cites` / `updates` relation kinds. Returns nodes with their distance from the seed and canonical edges carrying their kinds. Metadata-only: it spends no credits. |
 | `conceptio_connectors_send` | Save one document to Zotero, or open a metadata-only Obsidian handoff. Server-side ownership, connector trial and failure semantics apply. |
 | `conceptio_connectors_send_all` | Bulk-save up to 500 document ids to Zotero. Requires Pro, institutional or licensed access — there is no free-trial path. |
 
@@ -220,7 +221,7 @@ Add to `claude_desktop_config.json`:
 ### OpenCode / Windsurf / Antigravity
 
 The same JSON shape works in any MCP-aware client — point it at `conceptio mcp`
-and the eight tools above are exposed automatically. An MCP host may supply the
+and the nine tools above are exposed automatically. An MCP host may supply the
 credential by environment (`CONCEPTIO_API_KEY`, or `CONCEPTIO_BEARER_TOKEN` for a
 signed-in session) instead of writing `~/.conceptio/config.json`.
 
@@ -332,7 +333,7 @@ binary at it with `CONCEPTIO_API_BASE` and an environment credential, and assert
 on exit codes, on stdout and on the stub's request log. It covers the whole
 surface rather than a sample of it — search (directives, filters, markdown,
 batch, jobs), resolve, cite, info, proof, download's boundary, the credential
-paths, the connector failure reasons, all eight MCP tools, and the exact argv
+paths, the connector failure reasons, all nine MCP tools, and the exact argv
 each editor client sends (see below). It also refuses to run quietly against the
 wrong binary: if `conceptio --version` does not match the version this tree
 declares, every check would be proving an older install, so it fails and says so.

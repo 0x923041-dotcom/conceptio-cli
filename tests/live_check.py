@@ -408,7 +408,7 @@ def define_checks(live, main, running, expired, connectors, work):
             {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}) + "\n", timeout=90, base=main.base)
         exit_is(proc, 0, "mcp tools/list")
         names = [t["name"] for t in json.loads(proc.stdout.strip().splitlines()[-1])["result"]["tools"]]
-        expect(len(names) == 8, "mcp tools/list: %d tools, README says 8: %s" % (len(names), names))
+        expect(len(names) == 9, "mcp tools/list: %d tools, README says 9: %s" % (len(names), names))
         expect("conceptio_search_batch" in names, "mcp tools/list: batch tool missing")
 
     @check("search-job --wait on a RUNNING job — exit 1, never a silent success")
@@ -703,7 +703,7 @@ def define_checks(live, main, running, expired, connectors, work):
 
         catalog = reply_of({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         names = [t["name"] for t in (catalog.get("result") or {}).get("tools", [])]
-        expect(len(names) == 8, "keyless mcp: tools/list answered %d tools: %s" % (len(names), names))
+        expect(len(names) == 9, "keyless mcp: tools/list answered %d tools: %s" % (len(names), names))
 
         call = reply_of({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                          "params": {"name": "conceptio_search",

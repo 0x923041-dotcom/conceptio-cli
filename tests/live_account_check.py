@@ -53,7 +53,7 @@ VERBOSE = os.environ.get("CONCEPTIO_ACCOUNT_VERBOSE") == "1"
 PRODUCTION = "https://www.conceptio.app"
 PACE_SECONDS = 1.1          # the Pro burst bucket is 1 req/s; a 429 here is our pacing
 MAX_PDF_BYTES = 100 * 1024 * 1024
-MCP_TOOL_COUNT = 8
+MCP_TOOL_COUNT = 9
 
 # Every command the README documents, and the fields its JSON promises.
 SEARCH_RESULT_FIELDS = (

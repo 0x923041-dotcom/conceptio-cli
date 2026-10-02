@@ -381,6 +381,40 @@ class ConceptioClient:
             raise ConceptioError(str(data["error"]))
         return data
 
+    def graph_walk(
+        self,
+        seed: str,
+        direction: str = "out",
+        hops: int = 2,
+        kind: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Traverse the stored reference pair from one ``source_id``.
+
+        The compliance walk — what a document cites (``out``), what cites it
+        (``in``), or both — optionally filtered by relation kind (``cites`` /
+        ``updates``). Metadata-only, so it spends no credits; the server caps
+        the walk at two hops and at 2,000 nodes / 10,000 edges.
+        """
+        value = str(seed or "").strip()
+        if not value:
+            raise ConceptioError("A graph walk needs a seed source_id.")
+        if direction not in ("out", "in", "both"):
+            raise ConceptioError("direction must be out, in, or both.")
+        kinds = [str(k).strip().lower() for k in (kind or []) if str(k or "").strip()]
+        for one in kinds:
+            if one not in ("cites", "updates"):
+                raise ConceptioError("kind must be 'cites' or 'updates'.")
+        params: Dict[str, Any] = {
+            "seed": value,
+            "direction": direction,
+            "hops": max(1, min(int(hops), 2)),
+        }
+        if kinds:
+            # The server takes `kind` as a repeatable list, and httpx repeats a
+            # list value — one `&kind=cites&kind=updates`, never a joined string.
+            params["kind"] = list(dict.fromkeys(kinds))
+        return self._get_json("/api/graph/walk", params)
+
     def get_proof(self, doc_id: int, query: Optional[str] = None) -> Dict[str, Any]:
         """Fetch the machine-readable evidence bundle for one document.
 

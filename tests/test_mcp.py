@@ -61,6 +61,13 @@ class FakeMCPClient:
     def send_connector(self, connector, doc_id, vault=""):
         return {"connector": connector, "doc_id": doc_id, "vault": vault}
 
+    def graph_walk(self, seed, direction="out", hops=2, kind=None):
+        # Mirrors the served payload: the request param is `kind` (repeatable)
+        # and the answer reports `kinds`.
+        return {"seed": seed, "direction": direction, "hops": hops,
+                "kinds": kind or [], "nodes": [{"source_id": seed, "id": 1, "distance": 0}],
+                "edges": [], "truncated": False}
+
 
 @pytest.fixture
 def fake_client(monkeypatch):
@@ -129,16 +136,16 @@ def test_initialize_answers_a_version_when_none_was_asked_for(fake_client):
     assert responses[0]["result"]["protocolVersion"] == PROTOCOL_VERSION
 
 
-def test_tools_list_has_eight_tools(fake_client):
+def test_tools_list_has_nine_tools(fake_client):
     responses = _run([json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})], fake_client)
     names = [t["name"] for t in responses[0]["result"]["tools"]]
     assert names == [
         "conceptio_search", "conceptio_resolve", "conceptio_download_pdf",
         "conceptio_get_citation", "conceptio_search_batch",
         "conceptio_connectors_send", "conceptio_connectors_send_all",
-        "conceptio_get_document",
+        "conceptio_get_document", "conceptio_graph_walk",
     ]
-    assert len(TOOLS) == 8
+    assert len(TOOLS) == 9
 
 
 def test_tools_call_resolve(fake_client):
@@ -241,6 +248,32 @@ def test_tools_call_unknown_tool(fake_client):
            "params": {"name": "nope", "arguments": {}}}
     responses = _run([json.dumps(req)], fake_client)
     assert responses[0]["result"]["isError"] is True
+
+
+def test_tools_call_graph_walk(fake_client):
+    """The compliance walk reaches the agent surface — the pair IS the graph,
+    so an MCP client should not have to spell raw HTTP to traverse it."""
+    req = {"jsonrpc": "2.0", "id": 21, "method": "tools/call",
+           "params": {"name": "conceptio_graph_walk",
+                      "arguments": {"seed": "usc_42_1396a", "direction": "both",
+                                    "kind": ["cites"]}}}
+    responses = _run([json.dumps(req)], fake_client)
+    payload = json.loads(responses[0]["result"]["content"][0]["text"])
+    assert payload["seed"] == "usc_42_1396a"
+    assert payload["direction"] == "both"
+    assert payload["kinds"] == ["cites"]
+    assert payload["nodes"]
+    assert responses[0]["result"].get("isError") is not True
+
+
+def test_graph_walk_requires_a_seed(fake_client):
+    req = {"jsonrpc": "2.0", "id": 22, "method": "tools/call",
+           "params": {"name": "conceptio_graph_walk", "arguments": {}}}
+    responses = _run([json.dumps(req)], fake_client)
+    # Argument rejections surface as JSON-RPC errors, the same shape every other
+    # tool uses (see the batch-over-ten case just above), never a silent result.
+    assert responses[0]["error"]["code"] == -32603
+    assert "seed" in responses[0]["error"]["message"].lower()
 
 
 def test_ping(fake_client):
@@ -420,7 +453,7 @@ def test_modern_tools_list_carries_result_type_and_cache_hints(fake_client):
     result = responses[0]["result"]
     assert result["resultType"] == "complete"
     assert result["ttlMs"] == CACHE_TTL_MS and result["cacheScope"] == CACHE_SCOPE
-    assert len(result["tools"]) == 8
+    assert len(result["tools"]) == 9
 
 
 def test_modern_tools_call_carries_result_type_and_server_info(fake_client):
