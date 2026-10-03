@@ -1,0 +1,13 @@
+{
+  "service-api": "../path/to/the-service-repo/conceptio/api.py",
+  "service-web-picker": "../path/to/the-service-repo/frontend/src/shared/utils/config.js",
+  "service-mcp-manifest": "../path/to/the-service-repo/frontend/public/mcp.json",
+  "client-nvim-api": "../conceptio.nvim/lua/conceptio/api.lua",
+  "client-nvim-readme": "../conceptio.nvim/README.md",
+  "client-nvim-help": "../conceptio.nvim/doc/conceptio.txt",
+  "client-nvim-stub": "../conceptio.nvim/test/stub_api.py",
+  "client-obsidian-cli": "../conceptio-obsidian/src/cli.ts",
+  "client-obsidian-commands": "../conceptio-obsidian/src/cliCommands.ts",
+  "client-obsidian-types": "../conceptio-obsidian/src/types.ts",
+  "client-obsidian-readme": "../conceptio-obsidian/README.md"
+}
