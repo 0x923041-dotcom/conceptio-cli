@@ -1,6 +1,7 @@
 """Offline tests for ConceptioClient + directive parsing (mocked HTTP transport)."""
 
 import json
+import urllib.parse
 
 import httpx
 import pytest
@@ -735,3 +736,58 @@ def test_document_ids_below_one_are_refused_before_any_request(call):
     client = _make_client(_no_requests)
     with pytest.raises(ConceptioError, match="positive integer"):
         call(client)
+
+
+# ── the Obsidian handoff: corpus fields become a FILENAME and a note body ───
+
+def test_clean_obsidian_collapses_whitespace_and_drops_the_nul_byte():
+    """The stated contract, pinned.
+
+    Both escapes were wrong before (measured 2026-10-03): `r"\\s+"` collapsed
+    literal backslash-s TEXT instead of whitespace, and `"\\x00"` matched the
+    four characters rather than the byte — so a corpus title of `evil\nname`
+    reached `obsidian://new?file=evil%0Aname` as a newline-bearing filename,
+    and a NUL rode along (C-side URI handlers truncate filenames there).
+    """
+    assert client_mod._clean_obsidian("a\nb\tc", 50) == "a b c"
+    assert client_mod._clean_obsidian("a\x00b", 50) == "a b"
+    assert client_mod._clean_obsidian("   pad\n\n  ", 50) == "pad"
+
+
+def test_the_note_filename_refuses_control_and_platform_forbidden_characters():
+    """A title is attacker-influenced corpus data and this is a file name."""
+    assert client_mod.sanitize_obsidian_file("evil\nname") == "evil name"
+    cleaned = client_mod.sanitize_obsidian_file('a<b>c:"d|e?f*g"')
+    assert cleaned == "a-b-c--d-e-f-g-"
+    assert not any(ch in cleaned for ch in '<>:"/\\|?*')
+    assert all(ord(ch) >= 32 for ch in cleaned)
+
+
+def test_a_dot_only_title_never_becomes_the_filename():
+    assert client_mod.sanitize_obsidian_file("..") == "Conceptio document"
+    assert client_mod.sanitize_obsidian_file("...") == "Conceptio document"
+    assert client_mod.sanitize_obsidian_file("../../etc/passwd") == "..-..-etc-passwd"
+
+
+def test_the_obsidian_uri_carries_no_raw_control_characters():
+    """YAML injection is stopped twice: the cleaner eats the newline the
+    injection needed, and json.dumps quotes what remains."""
+    uri = client_mod.build_obsidian_uri(
+        {"title": "evil\nfront:\n  injected: 1", "abstract": "a\x00b"})
+    assert "\n" not in uri and "\r" not in uri and "\x00" not in uri
+    params = urllib.parse.parse_qs(urllib.parse.urlsplit(uri).query)
+    assert params["file"] == ["evil front- injected- 1"]
+    content = params["content"][0]
+    # The body joins its fields with a LITERAL `\n` pair (the URI's contract
+    # with the Obsidian handler — left alone; this test pins the shape, not
+    # the handler's interpretation of the separator).
+    fields = content.split("\\n")
+    assert fields[0] == "---"
+    assert fields[1] == 'title: "evil front: injected: 1"'
+    assert fields[2] == 'authors: "Unknown"'
+    assert not any(ch in content for ch in "\n\r\x00")
+
+
+def test_the_vault_name_is_collapsed_and_folds_separators():
+    assert client_mod.sanitize_obsidian_vault("v\nx") == "v x"
+    assert client_mod.sanitize_obsidian_vault("a/b:c#d?e%f&g") == "a-b-c-d-e-f-g"

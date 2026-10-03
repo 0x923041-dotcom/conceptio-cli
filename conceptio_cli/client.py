@@ -645,7 +645,16 @@ class ConceptioClient:
 
 
 def _clean_obsidian(value: Any, maximum: int) -> str:
-    return re.sub(r"\\s+", " ", str(value or "").replace("\\x00", " ")).strip()[:maximum]
+    """Collapse whitespace and drop NUL bytes from an attacker-influenced field.
+
+    Both escapes are deliberate and pinned (`tests/test_client.py`): the old
+    `r"\\s+"` collapsed literal backslash-s text instead of whitespace and
+    `"\\x00"` matched the four characters, not the byte — so a corpus title of
+    `evil\nname` reached the Obsidian URI as a filename containing a newline
+    (measured 2026-10-03), against the stated contract. A NUL in a filename is
+    worse than noise: C-side URI handlers truncate there.
+    """
+    return re.sub(r"\s+", " ", str(value or "").replace("\x00", " ")).strip()[:maximum]
 
 
 def sanitize_obsidian_vault(value: Any) -> str:
@@ -653,7 +662,10 @@ def sanitize_obsidian_vault(value: Any) -> str:
 
 
 def sanitize_obsidian_file(value: Any) -> str:
-    cleaned = re.sub(r"[\\\\/:#?%&]", "-", _clean_obsidian(value, 120)).rstrip(".").strip()
+    # Fold every character Windows forbids in a filename too: this string
+    # becomes the note's FILE NAME on the user's platform, and a title is
+    # corpus data — attacker-influenced (SECURITY.md threat model).
+    cleaned = re.sub(r"[\\\\/:#?%&<>\"|*]", "-", _clean_obsidian(value, 120)).rstrip(".").strip()
     return cleaned or "Conceptio document"
 
 
