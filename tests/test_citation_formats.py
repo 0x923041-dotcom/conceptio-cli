@@ -218,7 +218,7 @@ CARRIERS = (
      "json_enum_in_source", ()),
     ("server validation regex", "service-api",
      "regex_alternation", ("pattern=",)),
-    ("server citation renderers", "service-api",
+    ("server citation renderers", "service-cite-renderers",
      "dict_keys", ("_CITE_FNS",)),
     ("the web app's picker", "service-web-picker",
      "identifier_array", ("CITE_FORMATS",)),

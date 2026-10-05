@@ -1,5 +1,6 @@
 {
   "service-api": "../path/to/the-service-repo/conceptio/api.py",
+  "service-cite-renderers": "../path/to/the-service-repo/conceptio/docapi.py",
   "service-web-picker": "../path/to/the-service-repo/frontend/src/shared/utils/config.js",
   "service-mcp-manifest": "../path/to/the-service-repo/frontend/public/mcp.json",
   "client-nvim-api": "../conceptio.nvim/lua/conceptio/api.lua",
