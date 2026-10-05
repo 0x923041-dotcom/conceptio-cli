@@ -8,7 +8,7 @@ Every terminal and markdown sink runs through `conceptio_cli/formatter.py` (`san
 
 ## Cross-repo checks — resolve, never hardcode
 
-Tests that compare this repo's published claims against other trees resolve their targets through `tests/cross_repo.py` by logical name; a workspace maps names to paths in `tests/cross_repo_paths.json` (gitignored — see the committed example). An absent mapping is a skip. No test may hardcode a workspace layout.
+Tests that compare this repo's published claims against other trees resolve their targets through `tests/cross_repo.py` by logical name; a workspace maps names to paths in `tests/cross_repo_paths.json` (gitignored — see the committed example). An absent mapping is a skip. No test may hardcode a workspace layout. **A skip is silent blindness** — when a target symbol moves inside the service repo (measured: `_CITE_FNS` api.py → docapi.py during the modularization), the carrier goes blind and only a strict carrier test catches it: repoint the logical name in `tests/cross_repo_paths.json` and the committed example in the same change that moves the symbol.
 
 ## Release lockstep — one version, several places
 
