@@ -3,6 +3,20 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## 0.3.14
+
+### Removed
+
+- **The sponsored-results seam is retired.** `conceptio_cli/ads.py`, its
+  `tools/call` hook, the `lulu-ads` dependency and their pins are gone: the
+  ad-network experiment (Lulu Ads) ended pre-revenue — a pre-launch network
+  beside a paid, no-ads product was risk without return. The MCP server no
+  longer reads `clientInfo`, never contacts an ad endpoint, and ships the
+  original `httpx` + `rich` dependency set on the `>=3.8` floor. Public copy
+  moved back with it (docs FAQ, legal page, landing, DESIGN): the product —
+  web **and** MCP — now carries no advertising anywhere. History stays in
+  0.3.12.
+
 ## 0.3.13
 
 ### Added

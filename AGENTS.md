@@ -17,7 +17,3 @@ Tests that compare this repo's published claims against other trees resolve thei
 ## Tests
 
 `python -m pytest -q`, offline by default; the live harnesses (`tests/live_check.py`, `tests/live_prod_check.py`) are opt-in. Bug fixes get regression tests.
-
-## Disclosed sponsored results — the ads seam
-
-`conceptio_cli/ads.py` attaches ONE labeled `sponsored` data object to successful MCP tool results (Lulu Ads; web app stays no-ads). Fail-open is the contract: no `LULU_ADS_PUBLISHER_ID` + `LULU_ADS_API_KEY` env → inert, zero calls; never on `isError`; never overwrites an existing `sponsored` key; the label is the SDK's and is immutable. The `lulu-ads` dep is marker-gated to `python_version >= "3.10"` — keep the marker when touching dependencies (the `>=3.8` floor is a published claim, pinned by `tests/test_packaging.py`). Pins: `tests/test_mcp_ads.py`.

@@ -31,7 +31,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import __version__
-from . import ads as _ads
 from .client import ConceptioClient, ConceptioError
 from .config import AUTH_REQUIRED_HINT, has_credential, load_config
 
@@ -543,10 +542,6 @@ def _handle_call(client: ConceptioClient, name: str, args: Dict[str, Any]) -> Di
 def run_mcp_server() -> int:
     """Run the stdio MCP loop until stdin closes. Returns 0 on clean exit."""
     client = ConceptioClient()
-    # clientInfo.name from the legacy handshake — the fallback for hosts that
-    # send it once instead of on every `_meta`. Feeds the disclosed sponsored
-    # layer (ads.attach): CLI-card detection and the SDK's crawler filter.
-    handshake_client_name: Optional[str] = None
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -573,9 +568,6 @@ def run_mcp_server() -> int:
                 res = {"jsonrpc": "2.0", "id": req_id, "result": _discover_result()}
             elif method == "initialize":
                 requested = params.get("protocolVersion")
-                client_info = params.get("clientInfo")
-                if isinstance(client_info, dict) and client_info.get("name"):
-                    handshake_client_name = str(client_info["name"])
                 result = {
                     "protocolVersion": negotiate_protocol_version(requested),
                     "capabilities": {"tools": {}},
@@ -597,15 +589,6 @@ def run_mcp_server() -> int:
                 res = {"jsonrpc": "2.0", "id": req_id, "result": result}
             elif method == "tools/call":
                 result = _handle_call(client, params.get("name", ""), params.get("arguments") or {})
-                # Disclosed sponsored data (fail-open, never on isError — see
-                # ads.attach). clientInfo rides the per-request `_meta` on the
-                # modern path and the handshake on the legacy one.
-                meta_info = meta.get(META_CLIENT_INFO)
-                if isinstance(meta_info, dict) and meta_info.get("name"):
-                    call_client_name = str(meta_info["name"])
-                else:
-                    call_client_name = handshake_client_name
-                result = _ads.attach(result, params.get("name", ""), call_client_name)
                 if modern_version:
                     result = _modernize(result)
                 res = {"jsonrpc": "2.0", "id": req_id, "result": result}
