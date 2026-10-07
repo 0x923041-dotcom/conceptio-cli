@@ -184,6 +184,8 @@ def _unsupported_version(requested: str) -> Dict[str, Any]:
 TOOLS: List[Dict[str, Any]] = [
     {
         "name": "conceptio_search",
+        "annotations": {"readOnlyHint": True, "destructiveHint": False,
+                        "idempotentHint": True, "openWorldHint": True},
         "description": (
             "Search the open-access archive — papers, technical standards (NIST, OWASP, CISA), "
             "textbooks, and legal sources (EUR-Lex, HUDOC) with license-aware access. "
@@ -215,6 +217,8 @@ TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "conceptio_resolve",
+        "annotations": {"readOnlyHint": True, "destructiveHint": False,
+                        "idempotentHint": True, "openWorldHint": True},
         "description": (
             "Resolve a known identifier straight to its document(s) in the archive: an RFC number "
             "('RFC 2119'), a DOI ('doi:10.1109/access.2020.2986772'), an arXiv ID ('2604.08499'), a "
@@ -238,6 +242,8 @@ TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "conceptio_download_pdf",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False,
+                        "idempotentHint": True, "openWorldHint": True},
         "description": (
             "Download the original open-access PDF of a paper, standard, or book to a local "
             "file path. Accepts a Conceptio document ID (from conceptio_search) or a direct PDF URL."
@@ -259,6 +265,8 @@ TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "conceptio_get_citation",
+        "annotations": {"readOnlyHint": True, "destructiveHint": False,
+                        "idempotentHint": True, "openWorldHint": True},
         "description": "Get an academic citation for a document in BibTeX, APA, MLA, or Chicago format.",
         "inputSchema": {
             "type": "object",
@@ -268,6 +276,7 @@ TOOLS: List[Dict[str, Any]] = [
                     "type": "string",
                     "enum": ["bibtex", "apa", "mla", "chicago", "ieee", "harvard", "ris", "bluebook", "oscola", "iso690", "ansiz39"],
                     "default": "bibtex",
+                    "description": "Citation format to render (default: bibtex).",
                 },
             },
             "required": ["doc_id"],
@@ -275,6 +284,8 @@ TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "conceptio_search_batch",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False,
+                        "idempotentHint": False, "openWorldHint": True},
         "description": "Run multiple independent searches in one call. Default: queue 1–50 for bounded background execution and return an opaque job handle (poll it with the public API or `conceptio search-job`). Set sync:true to run 1–10 immediately and return all results in one response — each fresh subquery uses one search credit either way.",
         "inputSchema": {
             "type": "object",
@@ -297,12 +308,15 @@ TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "conceptio_connectors_send",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False,
+                        "idempotentHint": True, "openWorldHint": True},
         "description": "Save one document to Zotero or open a metadata-only Obsidian handoff. Server-side ownership, connector trial, and failure semantics apply.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "connector": {"type": "string", "enum": ["zotero", "obsidian"]},
-                "doc_id": {"type": "integer"},
+                "connector": {"type": "string", "enum": ["zotero", "obsidian"],
+                              "description": "Target connector: 'zotero' saves the document, 'obsidian' opens a metadata-only handoff."},
+                "doc_id": {"type": "integer", "description": "Conceptio document ID to save"},
                 "vault": {"type": "string", "description": "Optional Obsidian vault name"}
             },
             "required": ["connector", "doc_id"]
@@ -310,18 +324,24 @@ TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "conceptio_connectors_send_all",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False,
+                        "idempotentHint": False, "openWorldHint": True},
         "description": "Bulk-save selected documents to Zotero. Pro, institutional, or licensed access is required; no free trial path.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "connector": {"type": "string", "enum": ["zotero"], "default": "zotero"},
-                "doc_ids": {"type": "array", "minItems": 1, "maxItems": 500, "items": {"type": "integer"}}
+                "connector": {"type": "string", "enum": ["zotero"], "default": "zotero",
+                              "description": "Target connector — only 'zotero' supports bulk saves."},
+                "doc_ids": {"type": "array", "minItems": 1, "maxItems": 500, "items": {"type": "integer"},
+                            "description": "Conceptio document IDs to save (1-500)"}
             },
             "required": ["doc_ids"]
         }
     },
     {
         "name": "conceptio_get_document",
+        "annotations": {"readOnlyHint": True, "destructiveHint": False,
+                        "idempotentHint": True, "openWorldHint": True},
         "description": "Fetch complete metadata (title, author, source, license, description, direct PDF URL) for a document ID.",
         "inputSchema": {
             "type": "object",
@@ -331,6 +351,8 @@ TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "conceptio_graph_walk",
+        "annotations": {"readOnlyHint": True, "destructiveHint": False,
+                        "idempotentHint": True, "openWorldHint": True},
         "description": (
             "Walk the reference graph from one seed source_id — the compliance walk: "
             "what that document cites (direction='out'), what cites it (direction='in'), "

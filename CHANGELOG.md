@@ -3,6 +3,21 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## 0.3.13
+
+### Added
+
+- **The registry-facing surface directory scoring judges.** Every MCP tool
+  declares annotation hints (`readOnlyHint` / `destructiveHint` /
+  `idempotentHint` / `openWorldHint`): read paths claim read-only, state
+  changers don't, and the honesty matrix lives in
+  `tests/test_mcp_annotations.py`. The four undocumented input properties
+  (citation `format`; connector `connector` / `doc_id` / `doc_ids`) gained
+  descriptions — completeness, the classic tool-definition deduction. A
+  maintainer `Dockerfile` + `.dockerignore` give source-building registries a
+  reproducible image whose CMD is the same `conceptio-search mcp` entry point
+  the manifest advertises, pinned by the same test file.
+
 ## 0.3.12
 
 ### Added
