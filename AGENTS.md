@@ -12,7 +12,7 @@ Tests that compare this repo's published claims against other trees resolve thei
 
 ## Release lockstep — one version, several places
 
-`pyproject.toml` · `conceptio_cli/__init__.py` (fallback) · `server.json` · `CHANGELOG.md` — plus the current-release claims in the client docs of the sibling public repos (`conceptio.nvim`, `conceptio-obsidian`), which name this package's version and must move with it (pinned by `tests/test_cli_contract.py` when mapped). Ship: bump all → `pytest -q` → build → `twine check` → upload to PyPI → publish `server.json` to the MCP registry → confirm PyPI, the registry and the client docs all state the new version before declaring the release done.
+`pyproject.toml` · `conceptio_cli/__init__.py` (fallback) · `server.json` · `CHANGELOG.md` — plus the current-release claims in the client docs of the sibling public repos (`conceptio.nvim`, `conceptio-obsidian`), which name this package's version and must move with it (pinned by `tests/test_cli_contract.py` when mapped). Ship: bump all → `pytest -q` → build → `twine check` → upload to PyPI → publish `server.json` to the MCP registry → tag `v<version>` (`git tag -a`) and open a GitHub Release with the CHANGELOG notes — directory listings read tags/releases as maintenance signals → confirm PyPI, the registry and the client docs all state the new version before declaring the release done.
 
 ## Tests
 
