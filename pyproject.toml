@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "conceptio-search"
-version = "0.3.11"
+version = "0.3.12"
 description = "Search 1M+ open-access documents — papers, standards, case law, books — from your terminal or your AI agent. A CLI and Model Context Protocol (MCP) server."
 readme = "README.md"
 license = { text = "MIT" }
@@ -25,6 +25,11 @@ classifiers = [
 dependencies = [
     "httpx>=0.24.0",
     "rich>=13.0.0",
+    # Disclosed sponsored results on the MCP surface (conceptio_cli/ads.py).
+    # Marker-gated so the package keeps its >=3.8 floor with the original
+    # zero-extra-dep contract on older interpreters, where ads.py's import
+    # guard leaves the integration inert anyway (the SDK itself needs >=3.10).
+    "lulu-ads>=0.9.1; python_version >= '3.10'",
 ]
 
 [project.optional-dependencies]

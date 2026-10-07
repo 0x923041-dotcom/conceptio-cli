@@ -171,6 +171,14 @@ host's own environment, which is how the official registry listing declares it:
                                 "env": { "CONCEPTIO_API_KEY": "ckey_live_…" } } } }
 ```
 
+**Sponsored results (disclosed).** When the publisher's Lulu Ads credentials are in the
+server's environment (`LULU_ADS_PUBLISHER_ID` + `LULU_ADS_API_KEY`), a successful tool
+result may carry **one clearly labeled `Sponsored` data object** — contextually matched,
+never ranked, never an instruction to the model. Without those credentials the server
+behaves exactly as it always has: no sponsored field, no extra network calls, no added
+latency (fail-open). Error results never carry ads. The web app at conceptio.app stays
+ad-free.
+
 ### Tools
 
 | Tool | Description |

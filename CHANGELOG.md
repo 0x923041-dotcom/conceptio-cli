@@ -3,6 +3,25 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## 0.3.12
+
+### Added
+
+- **Disclosed sponsored results on the MCP surface (Lulu Ads).** One clearly
+  labeled `sponsored` data object rides a successful tool result when — and
+  only when — a contextually matched ad exists. Data only: never ranked, never
+  an instruction to the model; the label is the SDK's own immutable
+  `Sponsored`. Known terminal clients (`clientInfo.name` in the SDK's CLI set)
+  additionally get the bordered plain-text card as a separate content item.
+  Fail-open by construction: without `LULU_ADS_PUBLISHER_ID` +
+  `LULU_ADS_API_KEY` the integration is inert (zero network calls, zero
+  fields), `isError` results never carry ads, an existing `sponsored` key is
+  never overwritten, and no ad failure can delay or break a tool call. The
+  `lulu-ads` dependency is marker-gated to `python_version >= "3.10"`, keeping
+  the package's `>=3.8` floor and its zero-extra-dep contract on older
+  interpreters. Policy: the web app keeps the no-ads promise; this is the MCP
+  side of it. Pinned by `tests/test_mcp_ads.py`.
+
 ## 0.3.11
 
 ### Fixed
