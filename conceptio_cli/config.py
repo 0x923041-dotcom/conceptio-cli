@@ -8,10 +8,28 @@ endpoint and stores its own local config.
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-CONFIG_DIR = Path.home() / ".conceptio"
+
+def _config_dir() -> Path:
+    """``~/.conceptio`` — importable where no home directory exists.
+
+    A sandboxed runner (registry build harnesses, minimal CI images) can
+    execute with HOME unset, and ``Path.home()`` raises there — the process
+    then died at IMPORT time, before the MCP handshake could answer, so an
+    introspecting registry captured zero tools from a perfectly good server.
+    Config is only written by interactive commands; a keyless stdio run never
+    touches the path, so the fallback merely has to exist without raising.
+    """
+    try:
+        return Path.home() / ".conceptio"
+    except (RuntimeError, KeyError):
+        return Path(tempfile.gettempdir()) / ".conceptio"
+
+
+CONFIG_DIR = _config_dir()
 CONFIG_FILE = CONFIG_DIR / "config.json"
 DEFAULT_API_BASE = "https://www.conceptio.app"
 

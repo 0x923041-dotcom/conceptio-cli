@@ -72,6 +72,26 @@ def test_saving_an_api_key_clears_a_stale_bearer_token(isolated_config):
     assert saved["bearer_token"] == ""
 
 
+def test_config_module_imports_where_no_home_directory_exists(monkeypatch):
+    """A sandboxed runner can execute with HOME unset and ``Path.home()``
+    raises there. The module used to die at IMPORT time — before the MCP
+    handshake could answer — so an introspecting registry captured zero tools
+    from a perfectly good server."""
+    import importlib
+    from pathlib import Path as _Path
+
+    def _no_home(cls):
+        raise RuntimeError("could not determine home directory")
+
+    monkeypatch.setattr(_Path, "home", classmethod(_no_home))
+    reloaded = importlib.reload(config)
+    try:
+        assert reloaded.CONFIG_DIR.name == ".conceptio"
+    finally:
+        monkeypatch.undo()
+        importlib.reload(config)
+
+
 def test_saving_a_license_key_clears_a_stale_bearer_token(isolated_config):
     isolated_config.parent.mkdir(parents=True)
     isolated_config.write_text(
