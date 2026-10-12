@@ -269,6 +269,22 @@ def test_cite(capsys):
     assert "@misc" in capsys.readouterr().out
 
 
+def test_cite_prints_no_terminal_control_codes(capsys, monkeypatch):
+    """`cite` prints the citation itself to stdout — a terminal sink, and
+    OSC-52 is a clipboard write. The server folds the same fields
+    (docapi._cite_text), but the sink's duty is its own: defense in depth,
+    pinned here so a refactor cannot quietly re-open the raw print."""
+    class HostileClient(FakeClient):
+        def get_citation(self, doc_id, format="bibtex"):
+            return "Doe \x1b]52;c;YWJj\x07 (2026). Evil\x00 Title."
+
+    monkeypatch.setattr(cli_mod, "ConceptioClient", HostileClient)
+    assert main(["cite", "1", "--format", "apa"]) == 0
+    out = capsys.readouterr().out
+    assert "Doe" in out and "Evil" in out
+    assert "\x1b" not in out and "\x07" not in out and "\x00" not in out
+
+
 def test_info(capsys):
     assert main(["info", "1"]) == 0
     assert "Paper" in capsys.readouterr().out

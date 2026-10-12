@@ -13,6 +13,7 @@ from .config import AUTH_REQUIRED_HINT, has_credential, load_config, set_api_key
 from .formatter import (
     console,
     literal,
+    sanitize_text,
     print_document_info,
     print_search_results,
     set_json_mode,
@@ -716,7 +717,10 @@ def main(argv: Optional[list] = None) -> int:
             client = ConceptioClient()
             fmt = args.format or load_config().get("default_citation_format", "bibtex")
             try:
-                print(client.get_citation(args.doc_id, format=fmt))
+                # A citation is corpus-derived text and stdout is a terminal
+                # sink: OSC-52 is a clipboard write. The server folds the same
+                # field (docapi._cite_text) — this is the sink's own duty.
+                print(sanitize_text(client.get_citation(args.doc_id, format=fmt)))
             except ConceptioError as e:
                 console.print(f"[bold red][ERR][/] {e}")
                 return 1
