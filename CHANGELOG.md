@@ -3,6 +3,15 @@
 All notable changes to `conceptio-search`. Version numbers follow the release
 tags; the CLI's own `conceptio --version` reports the installed distribution.
 
+## Unreleased
+
+### Fixed
+
+- **`cite` output is control-stripped.** A citation is corpus-derived text and
+  stdout is a terminal sink — OSC-52 is a clipboard write on terminals that
+  support it. The print now routes through `formatter.sanitize_text`, pinned
+  by `tests/test_cli.py::test_cite_prints_no_terminal_control_codes`.
+
 ## 0.3.14
 
 ### Removed
