@@ -1,0 +1,29 @@
+name: verify-glama-buildspec
+
+# Why this exists: the awesome-mcp-servers entry (PR
+# punkpeye/awesome-mcp-servers#15931) is gated on Glama's quality score, whose
+# pipeline builds the server from its GENERATED build-spec Dockerfile and has
+# been failing with `DockerBuildError: (HTTP code 502)` + empty logs. This job
+# builds that exact Dockerfile on GitHub's stock ubuntu runner and asserts the
+# MCP tool surface answers — so "does the submission build?" has a verdict on a
+# host neither side controls. Green here + 502 there = the builder, not us.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "conceptio_cli/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/verify-glama-buildspec.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the build-spec Dockerfile and assert tools/list
+        run: PIN=${{ github.sha }} bash scripts/verify_glama_buildspec.sh
