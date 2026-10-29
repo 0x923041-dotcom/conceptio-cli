@@ -1,0 +1,53 @@
+name: CI
+
+# The forcing function for conceptio-cli's suite.
+#
+# WHY THIS FILE EXISTS
+# 209 pins and, until this file, no workflow ran them: the only existing
+# workflow (verify-glama-buildspec.yml) builds the Glama build-spec Dockerfile
+# and asserts `tools/list` — a valuable check, but it never runs pytest. A pin
+# nothing forces to keep passing quietly stops meaning anything. This is the
+# package's public gate: `conceptio-search` ships to PyPI from this tree.
+#
+# WHY `pip install .[test]`
+# The install builds the package the way a user gets it, so packaging breaks
+# fail here, not in a release. The test extra is declared in pyproject.toml —
+# one place, no second requirements file to forget.
+#
+# Offline only: the suite mocks the API; no test dials conceptio.app.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: conceptio-cli — the package suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: install
+        run: |
+          python -m pip install --disable-pip-version-check --upgrade pip
+          python -m pip install --disable-pip-version-check ".[test]"
+
+      - name: pytest
+        run: python -m pytest -q
