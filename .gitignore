@@ -10,3 +10,4 @@ dist/
 *.log
 tmp/
 tests/cross_repo_paths.json
+node_modules/
