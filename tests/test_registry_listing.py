@@ -150,3 +150,48 @@ def test_the_description_fits_the_schema_limit():
         "description is %d chars; the schema caps it at 100" % len(SERVER["description"])
     )
     assert SERVER["$schema"] == SCHEMA, "server.json pins an unexpected schema version"
+
+
+def test_the_readme_links_back_to_the_glama_listing():
+    """The README carries the badge that points a reader at the Glama listing.
+
+    Two registries read this README, and one of them reads it as a machine:
+
+    * Glama clones the repo and grades the server — the listing's score badge
+      renders from the same slug, so a typo here points the badge nowhere;
+    * punkpeye/awesome-mcp-servers triages a listing PR by whether the server
+      links back to its Glama page, and reads the badge's shape out of the
+      README to decide the PR is prioritized.
+
+    So the slug is a published claim, like the `mcp-name` marker above: it must
+    name THIS repo's listing, and it must use the canonical
+    `![<owner>/<repo> MCP server](.../badges/score.svg)` form the triage
+    recognizes. A silent rename is the failure — the page still renders, it
+    just links somewhere that is not this server.
+    """
+    slug = "0x923041-dotcom/conceptio-cli"
+    badge = (
+        "[![%s MCP server](https://glama.ai/mcp/servers/%s/badges/score.svg)]"
+        "(https://glama.ai/mcp/servers/%s)" % (slug, slug, slug)
+    )
+    assert badge in README, (
+        "README.md carries no canonical Glama badge for %s — the registry's "
+        "backlink check and the listing's own score badge both read it from "
+        "here" % slug
+    )
+
+
+def test_the_glama_manifest_claims_the_same_maintainer_as_the_listing():
+    """`glama.json` is how a namespace is claimed; the badge proves the claim.
+
+    The badge says "this repo is listed on Glama"; `glama.json` says "this repo
+    is mine". They must name the same owner, or the listing is a claim nobody
+    can verify and the badge advertises a page the maintainer does not control.
+    """
+    manifest = json.loads((ROOT / "glama.json").read_text(encoding="utf-8"))
+    maintainers = manifest.get("maintainers") or []
+    assert "0x923041-dotcom" in maintainers, (
+        "glama.json claims %r, but the badge advertises a listing owned by "
+        "0x923041-dotcom" % (maintainers,)
+    )
+
