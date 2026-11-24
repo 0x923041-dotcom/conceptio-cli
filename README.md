@@ -2,7 +2,7 @@
 
 <!-- mcp-name: io.github.0x923041-dotcom/conceptio-search -->
 
-[![Glama score](https://glama.ai/mcp/servers/0x923041-dotcom/conceptio-cli/badges/score.svg)](https://glama.ai/mcp/servers/0x923041-dotcom/conceptio-cli)
+[![0x923041-dotcom/conceptio-cli MCP server](https://glama.ai/mcp/servers/0x923041-dotcom/conceptio-cli/badges/score.svg)](https://glama.ai/mcp/servers/0x923041-dotcom/conceptio-cli)
 
 **Search 1M+ open-access documents — papers, standards, textbooks, and case law — right from your terminal or your AI agent.**
 
