@@ -17,3 +17,17 @@ Tests that compare this repo's published claims against other trees resolve thei
 ## Tests
 
 `python -m pytest -q`, offline by default; the live harnesses (`tests/live_check.py`, `tests/live_prod_check.py`) are opt-in. Bug fixes get regression tests.
+
+## Registry back-links — the badge is a machine-read claim
+
+Two registries read this README: Glama grades the server from it, and the
+`punkpeye/awesome-mcp-servers` listing PR (#15931) is triaged by whether the
+server links back to its Glama page. The badge in `README.md` must keep the
+canonical form `![0x923041-dotcom/conceptio-cli MCP server](https://glama.ai/mcp/servers/0x923041-dotcom/conceptio-cli/badges/score.svg)`
+— pinned by `tests/test_registry_listing.py`. A cosmetic rename of the alt text
+is a broken backlink: the page still renders, it just stops matching.
+
+The listing PR also needs the link in its **description**, not only in the
+README — the triage reads the description, and a README-only link leaves the PR
+unprioritized in a queue of thousands.
+
